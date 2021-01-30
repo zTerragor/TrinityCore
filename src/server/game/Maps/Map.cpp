@@ -3577,6 +3577,10 @@ void Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, ObjectGuid::Low
 {
     ASSERT(mode == 1);
     ASSERT(obj->GetMap() == this);
+
+    if (IsBattlegroundOrArena())
+        return;
+
     SpawnObjectType type;
     switch (obj->GetTypeId())
     {
@@ -3591,7 +3595,7 @@ void Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, ObjectGuid::Low
     }
 
     SpawnData const* data = sObjectMgr->GetSpawnData(type, spawnId);
-    if (!data || !(data->spawnGroupData->flags & SPAWNGROUP_FLAG_DYNAMIC_SPAWN_RATE))
+    if (!data || !data->spawnGroupData || !(data->spawnGroupData->flags & SPAWNGROUP_FLAG_DYNAMIC_SPAWN_RATE))
         return;
 
     auto it = _zonePlayerCountMap.find(obj->GetZoneId());
@@ -4816,6 +4820,10 @@ void Map::LoadCorpseData()
 
         } while (phaseResult->NextRow());
     }
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CORPSE_CUSTOMIZATIONS);
+    stmt->setUInt32(0, GetId());
+    stmt->setUInt32(1, GetInstanceId());
 
     //        0             1                            2
     // SELECT cc.ownerGuid, cc.chrCustomizationOptionID, cc.chrCustomizationChoiceID FROM corpse_customizations cc LEFT JOIN corpse c ON cc.ownerGuid = c.guid WHERE c.mapId = ? AND c.instanceId = ?

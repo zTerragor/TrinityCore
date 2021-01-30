@@ -1446,12 +1446,9 @@ void Spell::SelectImplicitTargetDestTargets(SpellEffIndex effIndex, SpellImplici
             if (SpellEffectInfo const* effect = m_spellInfo->GetEffect(effIndex))
             {
                 float angle = targetType.CalcDirectionAngle();
-                float objSize = target->GetCombatReach();
-                float dist = effect->CalcRadius(m_caster);
-                if (dist < objSize)
-                    dist = objSize;
-                else if (targetType.GetTarget() == TARGET_DEST_TARGET_RANDOM)
-                    dist = objSize + (dist - objSize) * float(rand_norm());
+                float dist = effect->CalcRadius(nullptr);
+                if (targetType.GetTarget() == TARGET_DEST_TARGET_RANDOM)
+                    dist *= float(rand_norm());
 
                 Position pos = dest._position;
                 target->MovePositionToFirstCollision(pos, dist, angle);
@@ -3044,6 +3041,9 @@ void Spell::prepare(SpellCastTargets const* targets, AuraEffect const* triggered
 
     TC_LOG_DEBUG("spells", "Spell::prepare: spell id %u source %u caster %d customCastFlags %u mask %u", m_spellInfo->Id, m_caster->GetEntry(), m_originalCaster ? m_originalCaster->GetEntry() : -1, _triggeredCastFlags, m_targets.GetTargetMask());
 
+    if (m_spellInfo->HasAttribute(SPELL_ATTR12_START_COOLDOWN_ON_CAST_START))
+        SendSpellCooldown();
+
     //Containers for channeled spells have to be set
     /// @todoApply this to all cast spells if needed
     // Why check duration? 29350: channelled triggers channelled
@@ -3303,7 +3303,8 @@ void Spell::_cast(bool skipCheck)
     }
 
     // CAST SPELL
-    SendSpellCooldown();
+    if (!m_spellInfo->HasAttribute(SPELL_ATTR12_START_COOLDOWN_ON_CAST_START))
+        SendSpellCooldown();
 
     PrepareScriptHitHandlers();
 

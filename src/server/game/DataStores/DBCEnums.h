@@ -201,6 +201,13 @@ enum BattlemasterListFlags
     BATTLEMASTER_LIST_FLAG_FACTIONAL            = 0x40
 };
 
+enum class ChrRacesFlag : int32
+{
+    AlliedRace  = 0x80000
+};
+
+DEFINE_ENUM_FLAG(ChrRacesFlag);
+
 enum ChrSpecializationFlag
 {
     CHR_SPECIALIZATION_FLAG_CASTER                  = 0x01,
@@ -851,14 +858,14 @@ enum class ChrCustomizationOptionFlag : int32
     Disabled    = 0x4,
 };
 
-DEFINE_ENUM_FLAG(ChrCustomizationOptionFlag)
+DEFINE_ENUM_FLAG(ChrCustomizationOptionFlag);
 
 enum class ChrCustomizationReqFlag : int32
 {
     HasRequirements = 0x1
 };
 
-DEFINE_ENUM_FLAG(ChrCustomizationReqFlag)
+DEFINE_ENUM_FLAG(ChrCustomizationReqFlag);
 
 enum Curves
 {
@@ -1322,7 +1329,7 @@ enum SpellShapeshiftFormFlags
     SHAPESHIFT_FORM_PREVENT_EMOTE_SOUNDS        = 0x1000
 };
 
-#define TaxiMaskSize 336
+#define TaxiMaskSize 337
 typedef std::array<uint8, TaxiMaskSize> TaxiMask;
 
 enum TotemCategoryType
@@ -1431,7 +1438,7 @@ enum class UiMapFlag : int32
     ForceOnNavbar           = 0x00008000
 };
 
-DEFINE_ENUM_FLAG(UiMapFlag)
+DEFINE_ENUM_FLAG(UiMapFlag);
 
 enum UiMapSystem : int8
 {

@@ -721,6 +721,8 @@ struct ChrRacesEntry
     int8 FemaleTextureFallbackRaceID;
     int8 FemaleTextureFallbackSex;
     int8 UnalteredVisualCustomizationRaceID;
+
+    EnumFlag<ChrRacesFlag> GetFlags() const { return static_cast<ChrRacesFlag>(Flags); }
 };
 
 #define MAX_MASTERY_SPELLS 2
@@ -2219,6 +2221,15 @@ struct MapDifficultyEntry
             return 604800;
         return 0;
     }
+};
+
+struct MapDifficultyXConditionEntry
+{
+    uint32 ID;
+    LocalizedString FailureDescription;
+    uint32 PlayerConditionID;
+    int32 OrderIndex;
+    uint32 MapDifficultyID;
 };
 
 struct ModifierTreeEntry
