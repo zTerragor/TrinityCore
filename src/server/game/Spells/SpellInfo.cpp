@@ -372,6 +372,7 @@ SpellImplicitTargetInfo::StaticData  SpellImplicitTargetInfo::_data[TOTAL_SPELL_
 };
 
 SpellEffectInfo::SpellEffectInfo(SpellInfo const* spellInfo, SpellEffectEntry const* _effect)
+    : EffectAttributes(SpellEffectAttributes::None)
 {
     ASSERT(spellInfo);
     ASSERT(_effect);
@@ -404,6 +405,7 @@ SpellEffectInfo::SpellEffectInfo(SpellInfo const* spellInfo, SpellEffectEntry co
     Scaling.Variance = _effect->Variance;
     Scaling.ResourceCoefficient = _effect->ResourceCoefficient;
     ImplicitTargetConditions = nullptr;
+    EffectAttributes = _effect->GetEffectAttributes();
 }
 
 bool SpellEffectInfo::IsEffect() const
@@ -439,6 +441,7 @@ bool SpellEffectInfo::IsAreaAuraEffect() const
         Effect == SPELL_EFFECT_APPLY_AREA_AURA_ENEMY    ||
         Effect == SPELL_EFFECT_APPLY_AREA_AURA_PET      ||
         Effect == SPELL_EFFECT_APPLY_AREA_AURA_OWNER    ||
+        Effect == SPELL_EFFECT_APPLY_AREA_AURA_SUMMONS  ||
         Effect == SPELL_EFFECT_APPLY_AREA_AURA_PARTY_NONRANDOM)
         return true;
     return false;
@@ -458,7 +461,7 @@ bool SpellEffectInfo::IsFarDestTargetEffect() const
 
 bool SpellEffectInfo::IsUnitOwnedAuraEffect() const
 {
-    return IsAreaAuraEffect() || Effect == SPELL_EFFECT_APPLY_AURA || Effect == SPELL_EFFECT_APPLY_AURA_ON_PET || Effect == SPELL_EFFECT_202;
+    return IsAreaAuraEffect() || Effect == SPELL_EFFECT_APPLY_AURA || Effect == SPELL_EFFECT_APPLY_AURA_ON_PET;
 }
 
 int32 SpellEffectInfo::CalcValue(Unit const* caster /*= nullptr*/, int32 const* bp /*= nullptr*/, Unit const* target /*= nullptr*/, float* variance /*= nullptr*/, uint32 castItemId /*= 0*/, int32 itemLevel /*= -1*/) const
@@ -728,7 +731,7 @@ ExpectedStatType SpellEffectInfo::GetScalingExpectedStat() const
         case SPELL_EFFECT_APPLY_AREA_AURA_ENEMY:
         case SPELL_EFFECT_APPLY_AREA_AURA_OWNER:
         case SPELL_EFFECT_APPLY_AURA_ON_PET:
-        case SPELL_EFFECT_202:
+        case SPELL_EFFECT_APPLY_AREA_AURA_SUMMONS:
         case SPELL_EFFECT_APPLY_AREA_AURA_PARTY_NONRANDOM:
             switch (ApplyAuraName)
             {
@@ -1125,6 +1128,7 @@ SpellInfo::SpellInfo(SpellNameEntry const* spellName, ::Difficulty difficulty, S
     IconFileDataId = _misc ? _misc->SpellIconFileDataID : 0;
     ActiveIconFileDataId = _misc ? _misc->ActiveIconFileDataID : 0;
     ContentTuningId = _misc ? _misc->ContentTuningID : 0;
+    ShowFutureSpellPlayerConditionID = _misc ? _misc->ShowFutureSpellPlayerConditionID : 0;
 
     _visuals = std::move(visuals);
 
@@ -3772,6 +3776,7 @@ std::vector<SpellPowerCost> SpellInfo::CalcPowerCost(Unit const* caster, SpellSc
 
         // Base powerCost
         int32 powerCost = power->ManaCost;
+        bool initiallyNegative = powerCost < 0;
         // PCT cost from total amount
         if (power->PowerCostPct)
         {
@@ -3830,9 +3835,6 @@ std::vector<SpellPowerCost> SpellInfo::CalcPowerCost(Unit const* caster, SpellSc
 
                 flatMod += (*i)->GetAmount();
             }
-
-            if (power->PowerType == POWER_MANA)
-                flatMod *= 1.0f + caster->m_unitData->ManaCostModifierModifier;
 
             powerCost += flatMod;
         }
@@ -3898,11 +3900,17 @@ std::vector<SpellPowerCost> SpellInfo::CalcPowerCost(Unit const* caster, SpellSc
             powerCost += CalculatePct(powerCost, (*i)->GetAmount());
         }
 
-        if (power->PowerType == POWER_HEALTH)
+        if (power->PowerType == POWER_MANA)
+            powerCost = float(powerCost) * (1.0f + caster->m_unitData->ManaCostMultiplier);
+        else if (power->PowerType == POWER_HEALTH)
         {
             healthCost += powerCost;
             continue;
         }
+
+        // power cost cannot become negative if initially positive
+        if (initiallyNegative != (powerCost < 0))
+            powerCost = 0;
 
         bool found = false;
         for (SpellPowerCost& cost : costs)
@@ -4529,4 +4537,13 @@ void SpellInfo::_UnloadImplicitTargetConditionLists()
             delete cur;
         }
     }
+}
+
+bool SpellInfo::MeetsFutureSpellPlayerCondition(Player const* player) const
+{
+    if (ShowFutureSpellPlayerConditionID == 0)
+        return false;
+
+    PlayerConditionEntry const* playerCondition = sPlayerConditionStore.LookupEntry(ShowFutureSpellPlayerConditionID);
+    return !playerCondition || ConditionMgr::IsPlayerMeetingCondition(player, playerCondition);
 }
