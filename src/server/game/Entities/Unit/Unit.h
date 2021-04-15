@@ -952,7 +952,8 @@ class TC_GAME_API Unit : public WorldObject
 
         void SendCombatLogMessage(WorldPackets::CombatLog::CombatLogServerPacket* combatLog) const;
 
-        DiminishingLevels GetDiminishing(DiminishingGroup group);
+        virtual bool IsAffectedByDiminishingReturns() const { return (GetCharmerOrOwnerPlayerOrPlayerItself() != nullptr); }
+        DiminishingLevels GetDiminishing(DiminishingGroup group) const;
         void IncrDiminishing(SpellInfo const* auraSpellInfo);
         bool ApplyDiminishingToDuration(SpellInfo const* auraSpellInfo, int32& duration, Unit* caster, DiminishingLevels previousLevel) const;
         void ApplyDiminishingAura(DiminishingGroup group, bool apply);
@@ -1598,8 +1599,8 @@ class TC_GAME_API Unit : public WorldObject
         bool HasAuraTypeWithValue(AuraType auratype, int32 value) const;
         template <typename InterruptFlags>
         bool HasNegativeAuraWithInterruptFlag(InterruptFlags flag, ObjectGuid guid = ObjectGuid::Empty) const;
-        bool HasNegativeAuraWithAttribute(uint32 flag, ObjectGuid guid = ObjectGuid::Empty) const;
         bool HasAuraWithMechanic(uint32 mechanicMask) const;
+        bool HasStrongerAuraWithDR(SpellInfo const* auraSpellInfo, Unit* caster) const;
 
         AuraEffect* IsScriptOverriden(SpellInfo const* spell, int32 script) const;
         uint32 GetDiseasesByCaster(ObjectGuid casterGUID, bool remove = false);
@@ -1662,6 +1663,12 @@ class TC_GAME_API Unit : public WorldObject
         }
         void AddChannelObject(ObjectGuid guid) { AddDynamicUpdateFieldValue(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::ChannelObjects)) = guid; }
         void SetChannelObject(uint32 slot, ObjectGuid guid) { SetUpdateFieldValue(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::ChannelObjects, slot), guid); }
+        void RemoveChannelObject(ObjectGuid guid)
+        {
+            int32 index = m_unitData->ChannelObjects.FindIndex(guid);
+            if (index >= 0)
+                RemoveDynamicUpdateFieldValue(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::ChannelObjects), index);
+        }
         void ClearChannelObjects() { ClearDynamicUpdateFieldValues(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::ChannelObjects)); }
 
         void SetCurrentCastSpell(Spell* pSpell);
