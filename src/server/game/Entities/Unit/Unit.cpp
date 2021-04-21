@@ -866,15 +866,82 @@ uint32 Unit::DealDamage(Unit* victim, uint32 damage, CleanDamage const* cleanDam
             victim->ToCreature()->LowerPlayerDamageReq(health < damage ?  health : damage);
     }
 
+    bool killed = false;
+    bool skipSettingDeathState = false;
+
     if (health <= damage)
     {
+        killed = true;
+
         TC_LOG_DEBUG("entities.unit", "DealDamage: victim just died");
 
         if (victim->GetTypeId() == TYPEID_PLAYER && victim != this)
             victim->ToPlayer()->UpdateCriteria(CRITERIA_TYPE_TOTAL_DAMAGE_RECEIVED, health);
 
-        Kill(victim, durabilityLoss);
+        if (damagetype != NODAMAGE && damagetype != SELF_DAMAGE && victim->HasAuraType(SPELL_AURA_SCHOOL_ABSORB_OVERKILL))
+        {
+            AuraEffectList vAbsorbOverkill = victim->GetAuraEffectsByType(SPELL_AURA_SCHOOL_ABSORB_OVERKILL);
+            DamageInfo damageInfo = DamageInfo(this, victim, damage, spellProto, damageSchoolMask, damagetype,
+                cleanDamage ? cleanDamage->attackType : BASE_ATTACK);
+            for (AuraEffect* absorbAurEff : vAbsorbOverkill)
+            {
+                Aura* base = absorbAurEff->GetBase();
+                AuraApplication const* aurApp = base->GetApplicationOfTarget(victim->GetGUID());
+                if (!aurApp)
+                    continue;
+
+                if (!(absorbAurEff->GetMiscValue() & damageInfo.GetSchoolMask()))
+                    continue;
+
+                // cannot absorb over limit
+                if (damage >= victim->CountPctFromMaxHealth(100 + absorbAurEff->GetMiscValueB()))
+                    continue;
+
+                // get amount which can be still absorbed by the aura
+                int32 currentAbsorb = absorbAurEff->GetAmount();
+                // aura with infinite absorb amount - let the scripts handle absorbtion amount, set here to 0 for safety
+                if (currentAbsorb < 0)
+                    currentAbsorb = 0;
+
+                uint32 tempAbsorb = uint32(currentAbsorb);
+
+                // This aura type is used both by Spirit of Redemption (death not really prevented, must grant all credit immediately) and Cheat Death (death prevented)
+                // repurpose PreventDefaultAction for this
+                bool deathFullyPrevented = false;
+
+                absorbAurEff->GetBase()->CallScriptEffectAbsorbHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb, deathFullyPrevented);
+                currentAbsorb = tempAbsorb;
+
+                // absorb must be smaller than the damage itself
+                currentAbsorb = RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()));
+                damageInfo.AbsorbDamage(currentAbsorb);
+
+                if (deathFullyPrevented)
+                    killed = false;
+
+                skipSettingDeathState = true;
+
+                if (currentAbsorb)
+                {
+                    WorldPackets::CombatLog::SpellAbsorbLog absorbLog;
+                    absorbLog.Attacker = GetGUID();
+                    absorbLog.Victim = victim->GetGUID();
+                    absorbLog.Caster = base->GetCasterGUID();
+                    absorbLog.AbsorbedSpellID = spellProto ? spellProto->Id : 0;
+                    absorbLog.AbsorbSpellID = base->GetId();
+                    absorbLog.Absorbed = currentAbsorb;
+                    absorbLog.OriginalDamage = damageInfo.GetOriginalDamage();
+                    absorbLog.LogData.Initialize(victim);
+                    SendCombatLogMessage(&absorbLog);
+                }
+            }
+
+            damage = damageInfo.GetDamage();
+        }
     }
+
+    if (killed)
+        Kill(victim, durabilityLoss, skipSettingDeathState);
     else
     {
         TC_LOG_DEBUG("entities.unit", "DealDamageAlive");
@@ -1762,25 +1829,39 @@ void Unit::CalcAbsorbResist(DamageInfo& damageInfo)
         absorbAurEff->GetBase()->CallScriptEffectAbsorbHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb, defaultPrevented);
         currentAbsorb = tempAbsorb;
 
-        if (defaultPrevented)
-            continue;
-
-        // absorb must be smaller than the damage itself
-        currentAbsorb = RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()));
-
-        damageInfo.AbsorbDamage(currentAbsorb);
-
-        tempAbsorb = currentAbsorb;
-        absorbAurEff->GetBase()->CallScriptEffectAfterAbsorbHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb);
-
-        // Check if our aura is using amount to count damage
-        if (absorbAurEff->GetAmount() >= 0)
+        if (!defaultPrevented)
         {
-            // Reduce shield amount
-            absorbAurEff->ChangeAmount(absorbAurEff->GetAmount() - currentAbsorb);
-            // Aura cannot absorb anything more - remove it
-            if (absorbAurEff->GetAmount() <= 0)
-                absorbAurEff->GetBase()->Remove(AURA_REMOVE_BY_ENEMY_SPELL);
+            // absorb must be smaller than the damage itself
+            currentAbsorb = RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()));
+
+            damageInfo.AbsorbDamage(currentAbsorb);
+
+            tempAbsorb = currentAbsorb;
+            absorbAurEff->GetBase()->CallScriptEffectAfterAbsorbHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb);
+
+            // Check if our aura is using amount to count damage
+            if (absorbAurEff->GetAmount() >= 0)
+            {
+                // Reduce shield amount
+                absorbAurEff->ChangeAmount(absorbAurEff->GetAmount() - currentAbsorb);
+                // Aura cannot absorb anything more - remove it
+                if (absorbAurEff->GetAmount() <= 0)
+                    absorbAurEff->GetBase()->Remove(AURA_REMOVE_BY_ENEMY_SPELL);
+            }
+        }
+
+        if (currentAbsorb)
+        {
+            WorldPackets::CombatLog::SpellAbsorbLog absorbLog;
+            absorbLog.Attacker = damageInfo.GetAttacker()->GetGUID();
+            absorbLog.Victim = damageInfo.GetVictim()->GetGUID();
+            absorbLog.Caster = absorbAurEff->GetBase()->GetCasterGUID();
+            absorbLog.AbsorbedSpellID = damageInfo.GetSpellInfo() ? damageInfo.GetSpellInfo()->Id : 0;
+            absorbLog.AbsorbSpellID = absorbAurEff->GetId();
+            absorbLog.Absorbed = currentAbsorb;
+            absorbLog.OriginalDamage = damageInfo.GetOriginalDamage();
+            absorbLog.LogData.Initialize(damageInfo.GetVictim());
+            SendCombatLogMessage(&absorbLog);
         }
     }
 
@@ -1810,34 +1891,48 @@ void Unit::CalcAbsorbResist(DamageInfo& damageInfo)
         absorbAurEff->GetBase()->CallScriptEffectManaShieldHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb, defaultPrevented);
         currentAbsorb = tempAbsorb;
 
-        if (defaultPrevented)
-            continue;
-
-        // absorb must be smaller than the damage itself
-        currentAbsorb = RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()));
-
-        int32 manaReduction = currentAbsorb;
-
-        // lower absorb amount by talents
-        if (float manaMultiplier = absorbAurEff->GetSpellEffectInfo()->CalcValueMultiplier(absorbAurEff->GetCaster()))
-            manaReduction = int32(float(manaReduction) * manaMultiplier);
-
-        int32 manaTaken = -damageInfo.GetVictim()->ModifyPower(POWER_MANA, -manaReduction);
-
-        // take case when mana has ended up into account
-        currentAbsorb = currentAbsorb ? int32(float(currentAbsorb) * (float(manaTaken) / float(manaReduction))) : 0;
-
-        damageInfo.AbsorbDamage(currentAbsorb);
-
-        tempAbsorb = currentAbsorb;
-        absorbAurEff->GetBase()->CallScriptEffectAfterManaShieldHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb);
-
-        // Check if our aura is using amount to count damage
-        if (absorbAurEff->GetAmount() >= 0)
+        if (!defaultPrevented)
         {
-            absorbAurEff->ChangeAmount(absorbAurEff->GetAmount() - currentAbsorb);
-            if ((absorbAurEff->GetAmount() <= 0))
-                absorbAurEff->GetBase()->Remove(AURA_REMOVE_BY_ENEMY_SPELL);
+            // absorb must be smaller than the damage itself
+            currentAbsorb = RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()));
+
+            int32 manaReduction = currentAbsorb;
+
+            // lower absorb amount by talents
+            if (float manaMultiplier = absorbAurEff->GetSpellEffectInfo()->CalcValueMultiplier(absorbAurEff->GetCaster()))
+                manaReduction = int32(float(manaReduction) * manaMultiplier);
+
+            int32 manaTaken = -damageInfo.GetVictim()->ModifyPower(POWER_MANA, -manaReduction);
+
+            // take case when mana has ended up into account
+            currentAbsorb = currentAbsorb ? int32(float(currentAbsorb) * (float(manaTaken) / float(manaReduction))) : 0;
+
+            damageInfo.AbsorbDamage(currentAbsorb);
+
+            tempAbsorb = currentAbsorb;
+            absorbAurEff->GetBase()->CallScriptEffectAfterManaShieldHandlers(absorbAurEff, aurApp, damageInfo, tempAbsorb);
+
+            // Check if our aura is using amount to count damage
+            if (absorbAurEff->GetAmount() >= 0)
+            {
+                absorbAurEff->ChangeAmount(absorbAurEff->GetAmount() - currentAbsorb);
+                if ((absorbAurEff->GetAmount() <= 0))
+                    absorbAurEff->GetBase()->Remove(AURA_REMOVE_BY_ENEMY_SPELL);
+            }
+        }
+
+        if (currentAbsorb)
+        {
+            WorldPackets::CombatLog::SpellAbsorbLog absorbLog;
+            absorbLog.Attacker = damageInfo.GetAttacker()->GetGUID();
+            absorbLog.Victim = damageInfo.GetVictim()->GetGUID();
+            absorbLog.Caster = absorbAurEff->GetBase()->GetCasterGUID();
+            absorbLog.AbsorbedSpellID = damageInfo.GetSpellInfo() ? damageInfo.GetSpellInfo()->Id : 0;
+            absorbLog.AbsorbSpellID = absorbAurEff->GetId();
+            absorbLog.Absorbed = currentAbsorb;
+            absorbLog.OriginalDamage = damageInfo.GetOriginalDamage();
+            absorbLog.LogData.Initialize(damageInfo.GetVictim());
+            SendCombatLogMessage(&absorbLog);
         }
     }
 
@@ -11471,7 +11566,7 @@ void Unit::SetMeleeAnimKitId(uint16 animKitId)
     SendMessageToSet(data.Write(), true);
 }
 
-void Unit::Kill(Unit* victim, bool durabilityLoss)
+void Unit::Kill(Unit* victim, bool durabilityLoss /*= true*/, bool skipSettingDeathState /*= false*/)
 {
     // Prevent killing unit twice (and giving reward from kill twice)
     if (!victim->GetHealth())
@@ -11586,8 +11681,11 @@ void Unit::Kill(Unit* victim, bool durabilityLoss)
     if (Player* killerPlayer = GetCharmerOrOwnerPlayerOrPlayerItself())
         killerPlayer->UpdateCriteria(CRITERIA_TYPE_GET_KILLING_BLOWS, 1, 0, 0, victim);
 
-    TC_LOG_DEBUG("entities.unit", "SET JUST_DIED");
-    victim->setDeathState(JUST_DIED);
+    if (!skipSettingDeathState)
+    {
+        TC_LOG_DEBUG("entities.unit", "SET JUST_DIED");
+        victim->setDeathState(JUST_DIED);
+    }
 
     // Inform pets (if any) when player kills target)
     // MUST come after victim->setDeathState(JUST_DIED); or pet next target
