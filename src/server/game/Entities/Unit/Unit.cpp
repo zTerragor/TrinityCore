@@ -3093,14 +3093,15 @@ void Unit::InterruptSpell(CurrentSpellTypes spellType, bool withDelayed, bool wi
             if (GetTypeId() == TYPEID_PLAYER)
                 ToPlayer()->SendAutoRepeatCancel(this);
 
+        m_currentSpells[spellType] = nullptr;
+
         if (spell->getState() != SPELL_STATE_FINISHED)
             spell->cancel();
+        else
+            spell->SetReferencedFromCurrent(false);
 
         if (GetTypeId() == TYPEID_UNIT && IsAIEnabled)
             ToCreature()->AI()->OnSpellCastInterrupt(spell->GetSpellInfo());
-
-        m_currentSpells[spellType] = nullptr;
-        spell->SetReferencedFromCurrent(false);
     }
 }
 
@@ -8273,7 +8274,9 @@ void Unit::SetInCombatState(bool PvP, Unit* enemy)
     }
 
     if (Spell* spell = m_currentSpells[CURRENT_GENERIC_SPELL])
-        if (spell->getState() == SPELL_STATE_PREPARING && spell->m_spellInfo->InterruptFlags.HasFlag(SpellInterruptFlags::Combat))
+        if (spell->getState() == SPELL_STATE_PREPARING
+            && spell->m_spellInfo->HasAttribute(SPELL_ATTR0_CANT_USED_IN_COMBAT)
+            && spell->m_spellInfo->InterruptFlags.HasFlag(SpellInterruptFlags::Combat))
             InterruptNonMeleeSpells(false);
 
     RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags::EnteringCombat);
@@ -14502,103 +14505,27 @@ uint32 Unit::GetCastSpellXSpellVisualId(SpellInfo const* spellInfo) const
 
 struct CombatLogSender
 {
-    WorldObject const* i_source;
     WorldPackets::CombatLog::CombatLogServerPacket const* i_message;
-    float const i_distSq;
-    CombatLogSender(WorldObject const* src, WorldPackets::CombatLog::CombatLogServerPacket* msg, float dist)
-        : i_source(src), i_message(msg), i_distSq(dist * dist)
+
+    explicit CombatLogSender(WorldPackets::CombatLog::CombatLogServerPacket* msg)
+        : i_message(msg)
     {
         msg->Write();
     }
 
-    bool IsInRangeHelper(WorldObject const* object) const;
-    void Visit(PlayerMapType &m);
-    void Visit(CreatureMapType &m);
-    void Visit(DynamicObjectMapType &m);
-    template<class SKIP> void Visit(GridRefManager<SKIP>&) { }
-
-    void SendPacket(Player* player)
+    WorldPacket const* operator()(Player* player) const
     {
-        if (!player->HaveAtClient(i_source))
-            return;
-
         if (player->IsAdvancedCombatLoggingEnabled())
-            player->SendDirectMessage(i_message->GetFullLogPacket());
+            return i_message->GetFullLogPacket();
         else
-            player->SendDirectMessage(i_message->GetBasicLogPacket());
+            return i_message->GetBasicLogPacket();
     }
 };
 
-bool CombatLogSender::IsInRangeHelper(WorldObject const* object) const
-{
-    if (!object->IsInPhase(i_source))
-        return false;
-
-    return object->GetExactDist2dSq(i_source) <= i_distSq;
-}
-
-void CombatLogSender::Visit(PlayerMapType& m)
-{
-    for (PlayerMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
-    {
-        Player* target = iter->GetSource();
-        if (!IsInRangeHelper(target))
-            continue;
-
-        // Send packet to all who are sharing the player's vision
-        if (target->HasSharedVision())
-        {
-            SharedVisionList::const_iterator i = target->GetSharedVisionList().begin();
-            for (; i != target->GetSharedVisionList().end(); ++i)
-                if ((*i)->m_seer == target)
-                    SendPacket(*i);
-        }
-
-        if (target->m_seer == target || target->GetVehicle())
-            SendPacket(target);
-    }
-}
-
-void CombatLogSender::Visit(CreatureMapType& m)
-{
-    for (CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
-    {
-        Creature* target = iter->GetSource();
-        if (!IsInRangeHelper(target))
-            continue;
-
-        // Send packet to all who are sharing the creature's vision
-        if (target->HasSharedVision())
-        {
-            SharedVisionList::const_iterator i = target->GetSharedVisionList().begin();
-            for (; i != target->GetSharedVisionList().end(); ++i)
-                if ((*i)->m_seer == target)
-                    SendPacket(*i);
-        }
-    }
-}
-
-void CombatLogSender::Visit(DynamicObjectMapType& m)
-{
-    for (DynamicObjectMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
-    {
-        DynamicObject* target = iter->GetSource();
-        if (!IsInRangeHelper(target))
-            continue;
-
-        if (Unit* caster = target->GetCaster())
-        {
-            // Send packet back to the caster if the caster has vision of dynamic object
-            Player* player = caster->ToPlayer();
-            if (player && player->m_seer == target)
-                SendPacket(player);
-        }
-    }
-}
-
 void Unit::SendCombatLogMessage(WorldPackets::CombatLog::CombatLogServerPacket* combatLog) const
 {
-    CombatLogSender notifier(this, combatLog, GetVisibilityRange());
+    CombatLogSender combatLogCustomizer(combatLog);
+    Trinity::MessageDistDeliverer<CombatLogSender> notifier(this, std::move(combatLogCustomizer), GetVisibilityRange());
     Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 }
 

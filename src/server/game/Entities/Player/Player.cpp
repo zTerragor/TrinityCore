@@ -6094,7 +6094,7 @@ void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool s
     if (self)
         SendDirectMessage(data);
 
-    Trinity::MessageDistDeliverer notifier(this, data, dist);
+    Trinity::MessageDistDeliverer<> notifier(this, data, dist);
     Cell::VisitWorldObjects(this, notifier, dist);
 }
 
@@ -6103,7 +6103,7 @@ void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool s
     if (self)
         SendDirectMessage(data);
 
-    Trinity::MessageDistDeliverer notifier(this, data, dist, own_team_only);
+    Trinity::MessageDistDeliverer<> notifier(this, data, dist, own_team_only);
     Cell::VisitWorldObjects(this, notifier, dist);
 }
 
@@ -6114,7 +6114,7 @@ void Player::SendMessageToSet(WorldPacket const* data, Player const* skipped_rcv
 
     // we use World::GetMaxVisibleDistance() because i cannot see why not use a distance
     // update: replaced by GetMap()->GetVisibilityDistance()
-    Trinity::MessageDistDeliverer notifier(this, data, GetVisibilityRange(), false, skipped_rcvr);
+    Trinity::MessageDistDeliverer<> notifier(this, data, GetVisibilityRange(), false, skipped_rcvr);
     Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 }
 
@@ -16406,29 +16406,27 @@ QuestGiverStatus Player::GetQuestDialogStatus(Object* questgiver)
 
     switch (questgiver->GetTypeId())
     {
-    case TYPEID_GAMEOBJECT:
-    {
-        QuestGiverStatus questStatus = questgiver->ToGameObject()->AI()->GetDialogStatus(this);
-        if (questStatus != QuestGiverStatus::ScriptedDefault)
-            return questStatus;
-        qr = sObjectMgr->GetGOQuestRelationBounds(questgiver->GetEntry());
-        qir = sObjectMgr->GetGOQuestInvolvedRelationBounds(questgiver->GetEntry());
-        break;
-    }
-    case TYPEID_UNIT:
-    {
-        QuestGiverStatus questStatus = questgiver->ToCreature()->AI()->GetDialogStatus(this);
-        if (questStatus != QuestGiverStatus::ScriptedDefault)
-            return questStatus;
-        qr = sObjectMgr->GetCreatureQuestRelationBounds(questgiver->GetEntry());
-        qir = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(questgiver->GetEntry());
-        break;
-    }
-    default:
-        // it's impossible, but check
-        TC_LOG_ERROR("entities.player.quest", "Player::GetQuestDialogStatus: Called with unexpected type (Entry: %u, Type: %u) by player '%s' (%s)",
-            questgiver->GetEntry(), questgiver->GetTypeId(), GetName().c_str(), GetGUID().ToString().c_str());
-        return QuestGiverStatus::None;
+        case TYPEID_GAMEOBJECT:
+        {
+            if (Optional<QuestGiverStatus> questStatus = questgiver->ToGameObject()->AI()->GetDialogStatus(this))
+                return *questStatus;
+            qr = sObjectMgr->GetGOQuestRelationBounds(questgiver->GetEntry());
+            qir = sObjectMgr->GetGOQuestInvolvedRelationBounds(questgiver->GetEntry());
+            break;
+        }
+        case TYPEID_UNIT:
+        {
+            if (Optional<QuestGiverStatus> questStatus = questgiver->ToCreature()->AI()->GetDialogStatus(this))
+                return *questStatus;
+            qr = sObjectMgr->GetCreatureQuestRelationBounds(questgiver->GetEntry());
+            qir = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(questgiver->GetEntry());
+            break;
+        }
+        default:
+            // it's impossible, but check
+            TC_LOG_ERROR("entities.player.quest", "Player::GetQuestDialogStatus: Called with unexpected type (Entry: %u, Type: %u) by player '%s' (%s)",
+                questgiver->GetEntry(), questgiver->GetTypeId(), GetName().c_str(), GetGUID().ToString().c_str());
+            return QuestGiverStatus::None;
     }
 
     QuestGiverStatus result = QuestGiverStatus::None;
