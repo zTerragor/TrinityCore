@@ -24,6 +24,7 @@
 #include "DBCEnums.h"
 #include "EquipmentSet.h"
 #include "GroupReference.h"
+#include "Hash.h"
 #include "ItemDefines.h"
 #include "ItemEnchantmentMgr.h"
 #include "MapReference.h"
@@ -529,6 +530,15 @@ enum AtLoginFlags
 };
 
 typedef std::map<uint32, QuestStatusData> QuestStatusMap;
+
+struct QuestObjectiveStatusData
+{
+    QuestStatusMap::iterator QuestStatusItr;
+    QuestObjective const* Objective;
+};
+
+using QuestObjectiveStatusMap = std::unordered_multimap<std::pair<QuestObjectiveType, int32>, QuestObjectiveStatusData>;
+
 typedef std::set<uint32> RewardedQuestSet;
 
 enum QuestSaveType
@@ -1446,7 +1456,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         bool CanSeeStartQuest(Quest const* quest);
         bool CanTakeQuest(Quest const* quest, bool msg);
         bool CanAddQuest(Quest const* quest, bool msg) const;
-        bool CanCompleteQuest(uint32 quest_id);
+        bool CanCompleteQuest(uint32 quest_id, uint32 ignoredQuestObjectiveId = 0);
         bool CanCompleteRepeatableQuest(Quest const* quest);
         bool CanRewardQuest(Quest const* quest, bool msg) const;
         bool CanRewardQuest(Quest const* quest, LootItemType rewardType, uint32 rewardId, bool msg) const;
@@ -1504,6 +1514,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 GetQuestSlotState(uint16 slot) const;
         uint16 GetQuestSlotCounter(uint16 slot, uint8 counter) const;
         uint32 GetQuestSlotTime(uint16 slot) const;
+        bool GetQuestSlotObjectiveFlag(uint16 slot, int8 objectiveIndex) const;
+        int32 GetQuestSlotObjectiveData(uint16 slot, QuestObjective const& objective) const;
         void SetQuestSlot(uint16 slot, uint32 quest_id, uint32 timer = 0);
         void SetQuestSlotCounter(uint16 slot, uint8 counter, uint16 count);
         void SetQuestSlotState(uint16 slot, uint32 state);
@@ -1525,18 +1537,20 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void TalkedToCreature(uint32 entry, ObjectGuid guid);
         void KillCreditCriteriaTreeObjective(QuestObjective const& questObjective);
         void MoneyChanged(uint64 value);
-        void ReputationChanged(FactionEntry const* factionEntry);
+        void ReputationChanged(FactionEntry const* factionEntry, int32 change);
         void CurrencyChanged(uint32 currencyId, int32 change);
+        void UpdateQuestObjectiveProgress(QuestObjectiveType objectiveType, int32 objectId, int64 addCount, ObjectGuid victimGuid = ObjectGuid::Empty);
         bool HasQuestForItem(uint32 itemId) const;
         bool HasQuestForGO(int32 goId) const;
         void UpdateForQuestWorldObjects();
         bool CanShareQuest(uint32 questId) const;
 
-        int32 GetQuestObjectiveData(Quest const* quest, int8 storageIndex) const;
-        bool IsQuestObjectiveComplete(QuestObjective const& objective) const;
+        int32 GetQuestObjectiveData(QuestObjective const& objective) const;
         void SetQuestObjectiveData(QuestObjective const& objective, int32 data);
-        bool IsQuestObjectiveProgressComplete(Quest const* quest) const;
-        void SendQuestComplete(Quest const* quest) const;
+        bool IsQuestObjectiveCompletable(uint16 slot, Quest const* quest, QuestObjective const& objective) const;
+        bool IsQuestObjectiveComplete(uint16 slot, Quest const* quest, QuestObjective const& objective) const;
+        bool IsQuestObjectiveProgressBarComplete(uint16 slot, Quest const* quest) const;
+        void SendQuestComplete(uint32 questId) const;
         void SendQuestReward(Quest const* quest, Creature const* questGiver, uint32 xp, bool hideChatMessage) const;
         void SendQuestFailed(uint32 questID, InventoryResult reason = EQUIP_ERR_OK) const;
         void SendQuestTimerFailed(uint32 questID) const;
@@ -2822,6 +2836,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 m_ExtraFlags;
 
         QuestStatusMap m_QuestStatus;
+        QuestObjectiveStatusMap m_questObjectiveStatus;
         QuestStatusSaveMap m_QuestStatusSave;
 
         RewardedQuestSet m_RewardedQuests;
@@ -2944,7 +2959,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void RefundItem(Item* item);
         void SendItemRefundResult(Item* item, ItemExtendedCostEntry const* iece, uint8 error) const;
 
-        void AdjustQuestReqItemCount(Quest const* quest);
+        void AdjustQuestObjectiveProgress(Quest const* quest);
 
         bool IsCanDelayTeleport() const { return m_bCanDelayTeleport; }
         void SetCanDelayTeleport(bool setting) { m_bCanDelayTeleport = setting; }
