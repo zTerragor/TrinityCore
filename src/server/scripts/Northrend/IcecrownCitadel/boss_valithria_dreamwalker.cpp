@@ -230,9 +230,25 @@ class ValithriaDespawner : public BasicEvent
 
         void operator()(Creature* creature) const
         {
-            if (creature->GetEntry() == NPC_VALITHRIA_DREAMWALKER)
-                if (InstanceScript* instance = creature->GetInstanceScript())
-                    instance->SendEncounterUnit(ENCOUNTER_FRAME_DISENGAGE, creature);
+            switch (creature->GetEntry())
+            {
+                case NPC_VALITHRIA_DREAMWALKER:
+                    if (InstanceScript* instance = creature->GetInstanceScript())
+                        instance->SendEncounterUnit(ENCOUNTER_FRAME_DISENGAGE, creature);
+                    // no break
+                case NPC_BLAZING_SKELETON:
+                case NPC_SUPPRESSER:
+                case NPC_BLISTERING_ZOMBIE:
+                case NPC_GLUTTONOUS_ABOMINATION:
+                case NPC_MANA_VOID:
+                case NPC_COLUMN_OF_FROST:
+                case NPC_ROT_WORM:
+                case NPC_RISEN_ARCHMAGE:
+                    break;
+                default:
+                    return;
+            }
+                
             creature->DespawnOrUnsummon(0, 10s);
         }
 
@@ -373,7 +389,7 @@ class boss_valithria_dreamwalker : public CreatureScript
                         lichKing->CastSpell(lichKing, SPELL_SPAWN_CHEST, false);
 
                     if (Creature* trigger = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_TRIGGER)))
-                        me->Kill(trigger);
+                        Unit::Kill(me, trigger);
                 }
             }
 
@@ -1018,9 +1034,9 @@ class npc_dream_portal : public CreatureScript
             {
             }
 
-            void OnSpellClick(Unit* /*clicker*/, bool& result) override
+            void OnSpellClick(Unit* /*clicker*/, bool spellClickHandled) override
             {
-                if (!result)
+                if (!spellClickHandled)
                     return;
 
                 _used = true;

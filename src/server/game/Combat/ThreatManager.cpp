@@ -363,6 +363,10 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
         }
     }
 
+    // ensure we're in combat (threat implies combat!)
+    if (!_owner->GetCombatManager().SetInCombatWith(target)) // if this returns false, we're not actually in combat, and thus cannot have threat!
+        return;                                              // typical causes: bad scripts trying to add threat to GMs, dead targets etc
+
     // ok, now we actually apply threat
     // check if we already have an entry - if we do, just increase threat for that entry and we're done
     auto it = _myThreatListEntries.find(target->GetGUID());
@@ -372,20 +376,16 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
         return;
     }
 
-    // otherwise, ensure we're in combat (threat implies combat!)
-    if (!_owner->GetCombatManager().SetInCombatWith(target)) // if this returns false, we're not actually in combat, and thus cannot have threat!
-        return;                                              // typical causes: bad scripts trying to add threat to GMs, dead targets etc
-
     // ok, we're now in combat - create the threat list reference and push it to the respective managers
     ThreatReference* ref = new ThreatReference(this, target, amount);
     PutThreatListRef(target->GetGUID(), ref);
     target->GetThreatManager().PutThreatenedByMeRef(_owner->GetGUID(), ref);
-    if (!ref->IsOffline() && !_ownerEngaged)
+    if (!_ownerEngaged)
     {
         _ownerEngaged = true;
 
         Creature* cOwner = _owner->ToCreature();
-        assert(cOwner); // if we got here the owner can have a threat list, and must be a creature!
+        ASSERT(cOwner); // if we got here the owner can have a threat list, and must be a creature!
         SaveCreatureHomePositionIfNeed(cOwner);
         if (cOwner->IsAIEnabled)
             cOwner->AI()->JustEngagedWith(target);
@@ -404,26 +404,16 @@ void ThreatManager::MatchUnitThreatToHighestThreat(Unit* target)
     if (_sortedThreatList.empty())
         return;
 
-    auto it = _sortedThreatList.begin(), end = _sortedThreatList.end();
+    auto it = _sortedThreatList.ordered_begin(), end = _sortedThreatList.ordered_end();
     ThreatReference const* highest = *it;
-    if (!highest->IsOnline())
+    if (!highest->IsAvailable())
         return;
 
-    if (highest->_taunted) // might need to skip this - new max could be one of the preceding elements (heap property) since there is only one taunt element
+    if (highest->IsTaunting() && ((++it) != end)) // might need to skip this - max threat could be the preceding element (there is only one taunt element)
     {
-        if ((++it) != end)
-        {
-            ThreatReference const* a = *it;
-            if (a->IsOnline() && a->GetThreat() > highest->GetThreat())
-                highest = a;
-
-            if ((++it) != end)
-            {
-                ThreatReference const* a = *it;
-                if (a->IsOnline() && a->GetThreat() > highest->GetThreat())
-                    highest = a;
-            }
-        }
+        ThreatReference const* a = *it;
+        if (a->IsAvailable() && a->GetThreat() > highest->GetThreat())
+            highest = a;
     }
 
     AddThreat(target, highest->GetThreat() - GetThreat(target, true), nullptr, true, true);
@@ -440,7 +430,7 @@ void ThreatManager::TauntUpdate()
         auto threatIt = _myThreatListEntries.find((*it)->GetCasterGUID());
         if (threatIt == threatEnd)
             continue;
-        if (!threatIt->second->IsOnline())
+        if (!threatIt->second->IsAvailable())
             continue;
         tauntRef = threatIt->second;
         break;
@@ -614,8 +604,11 @@ void ThreatManager::ForwardThreatForAssistingMe(Unit* assistant, float baseAmoun
 {
     if (spell && spell->HasAttribute(SPELL_ATTR1_NO_THREAT)) // shortcut, none of the calls would do anything
         return;
+    if (_threatenedByMe.empty())
+        return;
+    float const perTarget = baseAmount / _threatenedByMe.size(); // Threat is divided evenly among all targets (LibThreat sourced)
     for (auto const& pair : _threatenedByMe)
-        pair.second->GetOwner()->GetThreatManager().AddThreat(assistant, baseAmount, spell, ignoreModifiers);
+        pair.second->GetOwner()->GetThreatManager().AddThreat(assistant, perTarget, spell, ignoreModifiers);
 }
 
 void ThreatManager::RemoveMeFromThreatLists()
@@ -719,7 +712,7 @@ void ThreatManager::PurgeThreatListRef(ObjectGuid const& guid, bool sendRemove)
         _currentVictimRef = nullptr;
 
     _sortedThreatList.erase(ref->_handle);
-    if (sendRemove && ref->IsOnline())
+    if (sendRemove && ref->IsAvailable())
         SendRemoveToClients(ref->_victim);
 }
 
