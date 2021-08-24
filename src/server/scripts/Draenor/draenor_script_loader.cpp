@@ -17,10 +17,14 @@
 
 void AddSC_shadowmoon_draenor();
 void AddSC_tanaan_draenor();
+void AddSC_frostfire_draenor();
+void AddSC_shadowmoon_draenor();
 
 
 void AddDraenorScripts()
 {
     AddSC_tanaan_draenor();
+    AddSC_shadowmoon_draenor();
+    AddSC_frostfire_draenor();
     AddSC_shadowmoon_draenor();
 }
