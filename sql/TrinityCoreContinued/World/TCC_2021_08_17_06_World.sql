@@ -5,8 +5,10 @@
 # Targeted database: Shadowlands
 # Parsing date: 02/19/2021 19:46:34
 
-SET @CGUID := 960000;
-SET @OGUID := 960000;
+SET @CGUID := 1052000; -- TC SET GUID Range
+SET @OGUID := 620000; -- TC SET GUID Range
+
+DELETE FROM `creature` WHERE `map` = 2222;
 
 DELETE FROM `creature` WHERE `guid` BETWEEN @CGUID+0 AND @CGUID+257;
 INSERT INTO `creature` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficulties`, `PhaseId`, `PhaseGroup`, `modelid`, `equipment_id`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `spawndist`, `currentwaypoint`, `curhealth`, `curmana`, `MovementType`, `npcflag`, `unit_flags`, `dynamicflags`, `VerifiedBuild`) VALUES
@@ -271,6 +273,8 @@ INSERT INTO `creature` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficult
 (@CGUID+256, 62821, 2222, 10565, 13499, '0', '0', 0, 0, 0, -0.20000000298023223, 0, -0.20000000298023223, 0, 7200, 10, 0, 14150, 8626, 1, 0, 0, 0, 37623), -- 62821 (Area: 13499 - Difficulty: 0) (Auras: 122729 - 122729, 123236 - 123236) (possible waypoints or random movement)
 (@CGUID+257, 62822, 2222, 10565, 13499, '0', '0', 0, 0, 0, -0.20000000298023223, 0, -0.20000000298023223, 0, 7200, 10, 0, 11791, 0, 1, 0, 0, 0, 37623); -- 62822 (Area: 13499 - Difficulty: 0) (Auras: 122729 - 122729; 123240 - 123240) (possible waypoints or random movement)
 
+DELETE FROM `creature_addon` WHERE `guid` NOT IN (SELECT `guid` FROM `creature`);
+
 DELETE FROM `creature_addon` WHERE `guid` BETWEEN @CGUID+0 AND @CGUID+257;
 INSERT INTO `creature_addon` (`guid`, `path_id`, `mount`, `bytes1`, `bytes2`, `emote`, `aiAnimKit`, `movementAnimKit`, `meleeAnimKit`, `auras`) VALUES
 (@CGUID+0, 0, 0, 0, 1, 0, 0, 0, 0, ''), -- 173118
@@ -534,6 +538,8 @@ INSERT INTO `creature_addon` (`guid`, `path_id`, `mount`, `bytes1`, `bytes2`, `e
 (@CGUID+256, 0, 0, 0, 1, 0, 0, 0, 0, ''), -- 62821 - 122729 - 122729, 123236 - 123236
 (@CGUID+257, 0, 0, 0, 1, 0, 0, 0, 0, ''); -- 62822 - 122729 - 122729; 123240 - 123240
 
+DELETE FROM `gameobject` WHERE `map` = 2222;
+
 DELETE FROM `gameobject` WHERE `guid` BETWEEN @OGUID+0 AND @OGUID+112;
 INSERT INTO `gameobject` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficulties`, `PhaseId`, `PhaseGroup`, `position_x`, `position_y`, `position_z`, `orientation`, `rotation0`, `rotation1`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`, `VerifiedBuild`) VALUES
 (@OGUID+0, 353823, 2222, 10565, 13499, '0', '0', 0, -1809.1302490234375, 1537.9896240234375, 5274.5244140625, 3.363039016723632812, 0, 0, -0.99387645721435546, 0.110497035086154937, 7200, 255, 1, 37623), -- 353823 (Area: 13499 - Difficulty: 0)
@@ -649,6 +655,8 @@ INSERT INTO `gameobject` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficu
 (@OGUID+110, 355972, 2222, 10565, 13499, '0', '0', 0, -1788.2117919921875, 1462.16845703125, 5273.64306640625, 4.878195762634277343, 0, 0, -0.64612388610839843, 0.763232588768005371, 7200, 255, 1, 37623), -- 355972 (Area: 13499 - Difficulty: 0)
 (@OGUID+111, 367759, 2222, 10565, 13499, '0', '0', 0, -1844.6966552734375, 1458.254150390625, 5273.7041015625, 1.60426342487335205, 0, 0, 0.718839645385742187, 0.69517594575881958, 7200, 255, 1, 37623), -- 367759 (Area: 13499 - Difficulty: 0)
 (@OGUID+112, 358375, 2222, 10565, 13499, '0', '0', 0, -1829.799072265625, 1350.131103515625, 5268.12109375, 3.165193080902099609, 0, 0, -0.99993038177490234, 0.011799849569797515, 7200, 255, 1, 37623); -- 358375 (Area: 13499 - Difficulty: 0)
+
+DELETE FROM `gameobject_addon` WHERE `guid` NOT IN (SELECT `guid` FROM `gameobject`);
 
 DELETE FROM `gameobject_addon` WHERE `guid` BETWEEN @OGUID+0 AND @OGUID+112;
 INSERT INTO `gameobject_addon` (`guid`, `parent_rotation0`, `parent_rotation1`, `parent_rotation2`, `parent_rotation3`) VALUES
