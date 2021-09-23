@@ -21,7 +21,7 @@
 #include "BattlefieldMgr.h"
 #include "CellImpl.h"
 #include "CinematicMgr.h"
-#include "CombatLogPacketsCommon.h"
+#include "CombatLogPackets.h"
 #include "Common.h"
 #include "Creature.h"
 #include "GameTime.h"
@@ -429,7 +429,7 @@ void Object::BuildMovementUpdate(ByteBuffer* data, CreateObjectBits flags) const
     if (flags.Vehicle)
     {
         Unit const* unit = ToUnit();
-        *data << uint32(unit->GetVehicleKit()->GetVehicleInfo()->ID); // RecID
+        *data << uint32(unit->GetVehicleKit()->GetVehicleInfo()->ID);   // RecID
         *data << float(unit->GetOrientation());                         // InitialRawFacing
     }
 
@@ -456,32 +456,33 @@ void Object::BuildMovementUpdate(ByteBuffer* data, CreateObjectBits flags) const
     if (flags.AreaTrigger)
     {
         AreaTrigger const* areaTrigger = ToAreaTrigger();
-        AreaTriggerMiscTemplate const* areaTriggerMiscTemplate = areaTrigger->GetMiscTemplate();
+        AreaTriggerCreateProperties const* createProperties = areaTrigger->GetCreateProperties();
         AreaTriggerTemplate const* areaTriggerTemplate = areaTrigger->GetTemplate();
+        AreaTriggerShapeInfo const& shape = areaTrigger->GetShape();
 
         *data << uint32(areaTrigger->GetTimeSinceCreated());
 
         *data << areaTrigger->GetRollPitchYaw().PositionXYZStream();
 
-        bool hasAbsoluteOrientation = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_ABSOLUTE_ORIENTATION);
-        bool hasDynamicShape        = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_DYNAMIC_SHAPE);
-        bool hasAttached            = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_ATTACHED);
-        bool hasFaceMovementDir     = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_FACE_MOVEMENT_DIR);
-        bool hasFollowsTerrain      = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_FOLLOWS_TERRAIN);
-        bool hasUnk1                = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_UNK1);
-        bool hasTargetRollPitchYaw  = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_TARGET_ROLL_PITCH_YAW);
-        bool hasScaleCurveID        = areaTriggerMiscTemplate->ScaleCurveId != 0;
-        bool hasMorphCurveID        = areaTriggerMiscTemplate->MorphCurveId != 0;
-        bool hasFacingCurveID       = areaTriggerMiscTemplate->FacingCurveId != 0;
-        bool hasMoveCurveID         = areaTriggerMiscTemplate->MoveCurveId != 0;
-        bool hasAnimation           = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_ANIM_ID);
-        bool hasUnk3                = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_UNK3);
-        bool hasAnimKitID           = areaTriggerTemplate->HasFlag(AREATRIGGER_FLAG_HAS_ANIM_KIT_ID);
+        bool hasAbsoluteOrientation = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_ABSOLUTE_ORIENTATION);
+        bool hasDynamicShape        = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_DYNAMIC_SHAPE);
+        bool hasAttached            = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_ATTACHED);
+        bool hasFaceMovementDir     = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_FACE_MOVEMENT_DIR);
+        bool hasFollowsTerrain      = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_FOLLOWS_TERRAIN);
+        bool hasUnk1                = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_UNK1);
+        bool hasTargetRollPitchYaw  = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_HAS_TARGET_ROLL_PITCH_YAW);
+        bool hasScaleCurveID        = createProperties && createProperties->ScaleCurveId != 0;
+        bool hasMorphCurveID        = createProperties && createProperties->MorphCurveId != 0;
+        bool hasFacingCurveID       = createProperties && createProperties->FacingCurveId != 0;
+        bool hasMoveCurveID         = createProperties && createProperties->MoveCurveId != 0;
+        bool hasAnimation           = createProperties && createProperties->AnimId;
+        bool hasUnk3                = areaTriggerTemplate && areaTrigger->GetTemplate()->HasFlag(AREATRIGGER_FLAG_UNK3);
+        bool hasAnimKitID           = createProperties && createProperties->AnimKitId;
         bool hasAnimProgress        = false;
-        bool hasAreaTriggerSphere   = areaTriggerTemplate->IsSphere();
-        bool hasAreaTriggerBox      = areaTriggerTemplate->IsBox();
-        bool hasAreaTriggerPolygon  = areaTriggerTemplate->IsPolygon();
-        bool hasAreaTriggerCylinder = areaTriggerTemplate->IsCylinder();
+        bool hasAreaTriggerSphere   = shape.IsSphere();
+        bool hasAreaTriggerBox      = shape.IsBox();
+        bool hasAreaTriggerPolygon  = createProperties && shape.IsPolygon();
+        bool hasAreaTriggerCylinder = shape.IsCylinder();
         bool hasAreaTriggerSpline   = areaTrigger->HasSplines();
         bool hasOrbit               = areaTrigger->HasOrbit();
         bool hasMovementScript      = false;
@@ -526,64 +527,64 @@ void Object::BuildMovementUpdate(ByteBuffer* data, CreateObjectBits flags) const
             *data << areaTrigger->GetTargetRollPitchYaw().PositionXYZStream();
 
         if (hasScaleCurveID)
-            *data << uint32(areaTriggerMiscTemplate->ScaleCurveId);
+            *data << uint32(createProperties->ScaleCurveId);
 
         if (hasMorphCurveID)
-            *data << uint32(areaTriggerMiscTemplate->MorphCurveId);
+            *data << uint32(createProperties->MorphCurveId);
 
         if (hasFacingCurveID)
-            *data << uint32(areaTriggerMiscTemplate->FacingCurveId);
+            *data << uint32(createProperties->FacingCurveId);
 
         if (hasMoveCurveID)
-            *data << uint32(areaTriggerMiscTemplate->MoveCurveId);
+            *data << uint32(createProperties->MoveCurveId);
 
         if (hasAnimation)
-            *data << int32(areaTriggerMiscTemplate->AnimId);
+            *data << int32(createProperties->AnimId);
 
         if (hasAnimKitID)
-            *data << int32(areaTriggerMiscTemplate->AnimKitId);
+            *data << int32(createProperties->AnimKitId);
 
         if (hasAnimProgress)
             *data << uint32(0);
 
         if (hasAreaTriggerSphere)
         {
-            *data << float(areaTriggerTemplate->SphereDatas.Radius);
-            *data << float(areaTriggerTemplate->SphereDatas.RadiusTarget);
+            *data << float(shape.SphereDatas.Radius);
+            *data << float(shape.SphereDatas.RadiusTarget);
         }
 
         if (hasAreaTriggerBox)
         {
-            *data << float(areaTriggerTemplate->BoxDatas.Extents[0]);
-            *data << float(areaTriggerTemplate->BoxDatas.Extents[1]);
-            *data << float(areaTriggerTemplate->BoxDatas.Extents[2]);
-            *data << float(areaTriggerTemplate->BoxDatas.ExtentsTarget[0]);
-            *data << float(areaTriggerTemplate->BoxDatas.ExtentsTarget[1]);
-            *data << float(areaTriggerTemplate->BoxDatas.ExtentsTarget[2]);
+            *data << float(shape.BoxDatas.Extents[0]);
+            *data << float(shape.BoxDatas.Extents[1]);
+            *data << float(shape.BoxDatas.Extents[2]);
+            *data << float(shape.BoxDatas.ExtentsTarget[0]);
+            *data << float(shape.BoxDatas.ExtentsTarget[1]);
+            *data << float(shape.BoxDatas.ExtentsTarget[2]);
         }
 
         if (hasAreaTriggerPolygon)
         {
-            *data << int32(areaTriggerTemplate->PolygonVertices.size());
-            *data << int32(areaTriggerTemplate->PolygonVerticesTarget.size());
-            *data << float(areaTriggerTemplate->PolygonDatas.Height);
-            *data << float(areaTriggerTemplate->PolygonDatas.HeightTarget);
+            *data << int32(createProperties->PolygonVertices.size());
+            *data << int32(createProperties->PolygonVerticesTarget.size());
+            *data << float(shape.PolygonDatas.Height);
+            *data << float(shape.PolygonDatas.HeightTarget);
 
-            for (TaggedPosition<Position::XY> const& vertice : areaTriggerTemplate->PolygonVertices)
+            for (TaggedPosition<Position::XY> const& vertice : createProperties->PolygonVertices)
                 *data << vertice;
 
-            for (TaggedPosition<Position::XY> const& vertice : areaTriggerTemplate->PolygonVerticesTarget)
+            for (TaggedPosition<Position::XY> const& vertice : createProperties->PolygonVerticesTarget)
                 *data << vertice;
         }
 
         if (hasAreaTriggerCylinder)
         {
-            *data << float(areaTriggerTemplate->CylinderDatas.Radius);
-            *data << float(areaTriggerTemplate->CylinderDatas.RadiusTarget);
-            *data << float(areaTriggerTemplate->CylinderDatas.Height);
-            *data << float(areaTriggerTemplate->CylinderDatas.HeightTarget);
-            *data << float(areaTriggerTemplate->CylinderDatas.LocationZOffset);
-            *data << float(areaTriggerTemplate->CylinderDatas.LocationZOffsetTarget);
+            *data << float(shape.CylinderDatas.Radius);
+            *data << float(shape.CylinderDatas.RadiusTarget);
+            *data << float(shape.CylinderDatas.Height);
+            *data << float(shape.CylinderDatas.HeightTarget);
+            *data << float(shape.CylinderDatas.LocationZOffset);
+            *data << float(shape.CylinderDatas.LocationZOffsetTarget);
         }
 
         //if (hasMovementScript)
@@ -2094,13 +2095,12 @@ Player* WorldObject::GetSpellModOwner() const
 }
 
 // function uses real base points (typically value - 1)
-int32 WorldObject::CalculateSpellDamage(Unit const* target, SpellInfo const* spellProto, uint8 effIndex, int32 const* basePoints /*= nullptr*/, float* variance /*= nullptr*/, uint32 castItemId /*= 0*/, int32 itemLevel /*= -1*/) const
+int32 WorldObject::CalculateSpellDamage(Unit const* target, SpellEffectInfo const& spellEffectInfo, int32 const* basePoints /*= nullptr*/, float* variance /*= nullptr*/, uint32 castItemId /*= 0*/, int32 itemLevel /*= -1*/) const
 {
-    SpellEffectInfo const* effect = spellProto->GetEffect(effIndex);
     if (variance)
         *variance = 0.0f;
 
-    return effect ? effect->CalcValue(this, basePoints, target, variance, castItemId, itemLevel) : 0;
+    return spellEffectInfo.CalcValue(this, basePoints, target, variance, castItemId, itemLevel);
 }
 
 float WorldObject::GetSpellMaxRangeForTarget(Unit const* target, SpellInfo const* spellInfo) const
@@ -2231,8 +2231,8 @@ int32 WorldObject::ModSpellDuration(SpellInfo const* spellInfo, WorldObject cons
                 sSpellMgr->IsSpellMemberOfSpellGroup(spellInfo->Id, SPELL_GROUP_ELIXIR_BATTLE) ||
                 sSpellMgr->IsSpellMemberOfSpellGroup(spellInfo->Id, SPELL_GROUP_ELIXIR_GUARDIAN)))
             {
-                SpellEffectInfo const* effect = spellInfo->GetEffect(EFFECT_0);
-                if (unitTarget->HasAura(53042) && effect && unitTarget->HasSpell(effect->TriggerSpell))
+                SpellEffectInfo const& effect = spellInfo->GetEffect(EFFECT_0);
+                if (unitTarget->HasAura(53042) && unitTarget->HasSpell(effect.TriggerSpell))
                     duration *= 2;
             }
         }
@@ -2383,6 +2383,15 @@ SpellMissInfo WorldObject::MagicSpellHitResult(Unit* victim, SpellInfo const* sp
 //   Resist
 SpellMissInfo WorldObject::SpellHitResult(Unit* victim, SpellInfo const* spellInfo, bool canReflect /*= false*/) const
 {
+    // Check for immune
+    if (victim->IsImmunedToSpell(spellInfo, this))
+        return SPELL_MISS_IMMUNE;
+
+    // Damage immunity is only checked if the spell has damage effects, this immunity must not prevent aura apply
+    // returns SPELL_MISS_IMMUNE in that case, for other spells, the SMSG_SPELL_GO must show hit
+    if (spellInfo->HasOnlyDamageEffects() && victim->IsImmunedToDamage(spellInfo))
+        return SPELL_MISS_IMMUNE;
+
     // All positive spells can`t miss
     /// @todo client not show miss log for this spells - so need find info for this in dbc and use it!
     if (spellInfo->IsPositive() && !IsHostileTo(victim)) // prevent from affecting enemy by "positive" spell
@@ -2408,15 +2417,6 @@ SpellMissInfo WorldObject::SpellHitResult(Unit* victim, SpellInfo const* spellIn
     if (spellInfo->HasAttribute(SPELL_ATTR3_IGNORE_HIT_RESULT))
         return SPELL_MISS_NONE;
 
-    // Check for immune
-    if (victim->IsImmunedToSpell(spellInfo, this))
-        return SPELL_MISS_IMMUNE;
-
-    // Damage immunity is only checked if the spell has damage effects, this immunity must not prevent aura apply
-    // returns SPELL_MISS_IMMUNE in that case, for other spells, the SMSG_SPELL_GO must show hit
-    if (spellInfo->HasOnlyDamageEffects() && victim->IsImmunedToDamage(spellInfo))
-        return SPELL_MISS_IMMUNE;
-
     switch (spellInfo->DmgClass)
     {
         case SPELL_DAMAGE_CLASS_RANGED:
@@ -2428,6 +2428,15 @@ SpellMissInfo WorldObject::SpellHitResult(Unit* victim, SpellInfo const* spellIn
             return MagicSpellHitResult(victim, spellInfo);
     }
     return SPELL_MISS_NONE;
+}
+
+void WorldObject::SendSpellMiss(Unit* target, uint32 spellID, SpellMissInfo missInfo)
+{
+    WorldPackets::CombatLog::SpellMissLog spellMissLog;
+    spellMissLog.SpellID = spellID;
+    spellMissLog.Caster = GetGUID();
+    spellMissLog.Entries.emplace_back(target->GetGUID(), missInfo);
+    SendMessageToSet(spellMissLog.Write(), true);
 }
 
 FactionTemplateEntry const* WorldObject::GetFactionTemplateEntry() const
@@ -2662,12 +2671,20 @@ void WorldObject::CastSpell(Position const& dest, uint32 spellId, CastSpellExtra
 }
 
 // function based on function Unit::CanAttack from 13850 client
-bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const* bySpell /*= nullptr*/, bool spellCheck /*= true*/) const
+bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const* bySpell /*= nullptr*/) const
 {
     ASSERT(target);
 
-    // can't attack self
-    if (this == target)
+    // some positive spells can be casted at hostile target
+    bool isPositiveSpell = bySpell && bySpell->IsPositive();
+
+    // can't attack self (spells can, attribute check)
+    if (!bySpell && this == target)
+        return false;
+
+    // can't attack unattackable units
+    Unit const* unitTarget = target->ToUnit();
+    if (unitTarget && unitTarget->HasUnitState(UNIT_STATE_UNATTACKABLE))
         return false;
 
     // can't attack GMs
@@ -2675,10 +2692,56 @@ bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const
         return false;
 
     Unit const* unit = ToUnit();
-    Unit const* targetUnit = target->ToUnit();
+    // visibility checks (only units)
+    if (unit)
+    {
+        // can't attack invisible
+        if (!bySpell || !bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_INVISIBLE))
+        {
+            if (!unit->CanSeeOrDetect(target, bySpell && bySpell->IsAffectingArea()))
+                return false;
+        }
+    }
+
+    // can't attack dead
+    if ((!bySpell || !bySpell->IsAllowingDeadTarget()) && unitTarget && !unitTarget->IsAlive())
+        return false;
+
+    // can't attack untargetable
+    if ((!bySpell || !bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_UNTARGETABLE)) && unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE))
+        return false;
+
+    if (Player const* playerAttacker = ToPlayer())
+    {
+        if (playerAttacker->HasPlayerFlag(PLAYER_FLAGS_UBER))
+            return false;
+    }
+
+    // check flags
+    if (unitTarget && unitTarget->HasUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_TAXI_FLIGHT | UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_UNK_16)))
+        return false;
+
+    // ignore immunity flags when assisting
+    if (!bySpell || (isPositiveSpell && !bySpell->HasAttribute(SPELL_ATTR6_ASSIST_IGNORE_IMMUNE_FLAG)))
+    {
+        if (unit && !unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unitTarget && unitTarget->IsImmuneToNPC())
+            return false;
+
+        if (unitTarget && !unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unit && unit->IsImmuneToNPC())
+            return false;
+
+        if (!bySpell || !bySpell->HasAttribute(SPELL_ATTR8_ATTACK_IGNORE_IMMUNE_TO_PC_FLAG))
+        {
+            if (unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unitTarget && unitTarget->IsImmuneToPC())
+                return false;
+
+            if (unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unit && unit->IsImmuneToPC())
+                return false;
+        }
+    }
 
     // CvC case - can attack each other only when one of them is hostile
-    if (unit && !unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && targetUnit && !targetUnit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE))
+    if (unit && !unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unitTarget && !unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE))
         return IsHostileTo(target) || target->IsHostileTo(this);
 
     // PvP, PvC, CvP case
@@ -2687,14 +2750,14 @@ bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const
         return false;
 
     Player const* playerAffectingAttacker = unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) ? GetAffectingPlayer() : nullptr;
-    Player const* playerAffectingTarget = targetUnit && targetUnit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) ? target->GetAffectingPlayer() : nullptr;
+    Player const* playerAffectingTarget = unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) ? target->GetAffectingPlayer() : nullptr;
 
     // Not all neutral creatures can be attacked (even some unfriendly faction does not react aggresive to you, like Sporaggar)
     if ((playerAffectingAttacker && !playerAffectingTarget) || (!playerAffectingAttacker && playerAffectingTarget))
     {
         Player const* player = playerAffectingAttacker ? playerAffectingAttacker : playerAffectingTarget;
 
-        if (Unit const* creature = playerAffectingAttacker ? targetUnit : unit)
+        if (Unit const* creature = playerAffectingAttacker ? unitTarget : unit)
         {
             if (creature->IsContestedGuard() && player->HasPlayerFlag(PLAYER_FLAGS_CONTESTED_PVP))
                 return true;
@@ -2715,85 +2778,6 @@ bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const
     if (creatureAttacker && (creatureAttacker->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_TREAT_AS_RAID_UNIT))
         return false;
 
-    if (!bySpell)
-        spellCheck = false;
-
-    if (spellCheck && !IsValidSpellAttackTarget(target, bySpell))
-        return false;
-
-    return true;
-}
-
-bool WorldObject::IsValidSpellAttackTarget(WorldObject const* target, SpellInfo const* bySpell) const
-{
-    ASSERT(target);
-    ASSERT(bySpell);
-
-    // can't attack unattackable units
-    Unit const* unitTarget = target->ToUnit();
-    if (unitTarget && unitTarget->HasUnitState(UNIT_STATE_UNATTACKABLE))
-        return false;
-
-    Unit const* unit = ToUnit();
-    // visibility checks (only units)
-    if (unit)
-    {
-        // can't attack invisible
-        if (!bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_INVISIBLE))
-        {
-            if (!unit->CanSeeOrDetect(target, bySpell->IsAffectingArea()))
-                return false;
-
-            /*
-            else if (!obj)
-            {
-                // ignore stealth for aoe spells. Ignore stealth if target is player and unit in combat with same player
-                bool const ignoreStealthCheck = (bySpell && bySpell->IsAffectingArea()) ||
-                    (target->GetTypeId() == TYPEID_PLAYER && target->HasStealthAura() && IsInCombatWith(target));
-
-                if (!CanSeeOrDetect(target, ignoreStealthCheck))
-                    return false;
-            }
-            */
-        }
-    }
-
-    // can't attack dead
-    if (!bySpell->IsAllowingDeadTarget() && unitTarget && !unitTarget->IsAlive())
-        return false;
-
-    // can't attack untargetable
-    if (!bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_UNTARGETABLE) && unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE))
-        return false;
-
-    if (Player const* playerAttacker = ToPlayer())
-    {
-        if (playerAttacker->HasPlayerFlag(PLAYER_FLAGS_UBER))
-            return false;
-    }
-
-    // check flags
-    if (unitTarget && unitTarget->HasUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_TAXI_FLIGHT | UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_UNK_16)))
-        return false;
-
-    if (unit && !unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unitTarget && unitTarget->IsImmuneToNPC())
-        return false;
-
-    if (unitTarget && !unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unit && unit->IsImmuneToNPC())
-        return false;
-
-    if (!bySpell->HasAttribute(SPELL_ATTR8_ATTACK_IGNORE_IMMUNE_TO_PC_FLAG))
-    {
-        if (unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unitTarget && unitTarget->IsImmuneToPC())
-            return false;
-
-        if (unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) && unit && unit->IsImmuneToPC())
-            return false;
-    }
-
-    // check duel - before sanctuary checks
-    Player const* playerAffectingAttacker = unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) ? GetAffectingPlayer() : nullptr;
-    Player const* playerAffectingTarget = unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE) ? target->GetAffectingPlayer() : nullptr;
     if (playerAffectingAttacker && playerAffectingTarget)
         if (playerAffectingAttacker->duel && playerAffectingAttacker->duel->opponent == playerAffectingTarget && playerAffectingAttacker->duel->startTime != 0)
             return true;
@@ -2820,39 +2804,24 @@ bool WorldObject::IsValidSpellAttackTarget(WorldObject const* target, SpellInfo 
 }
 
 // function based on function Unit::CanAssist from 13850 client
-bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const* bySpell /*= nullptr*/, bool spellCheck /*= true*/) const
+bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const* bySpell /*= nullptr*/) const
 {
     ASSERT(target);
+
+    // some negative spells can be casted at friendly target
+    bool isNegativeSpell = bySpell && !bySpell->IsPositive();
 
     // can assist to self
     if (this == target)
         return true;
 
-    // can't assist GMs
-    if (target->GetTypeId() == TYPEID_PLAYER && target->ToPlayer()->IsGameMaster())
-        return false;
-
-    // can't assist non-friendly targets
-    if (GetReactionTo(target) < REP_NEUTRAL && target->GetReactionTo(this) < REP_NEUTRAL && (!ToCreature() || !(ToCreature()->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_TREAT_AS_RAID_UNIT)))
-        return false;
-
-    if (!bySpell)
-        spellCheck = false;
-
-    if (spellCheck && !IsValidSpellAssistTarget(target, bySpell))
-        return false;
-
-    return true;
-}
-
-bool WorldObject::IsValidSpellAssistTarget(WorldObject const* target, SpellInfo const* bySpell) const
-{
-    ASSERT(target);
-    ASSERT(bySpell);
-
     // can't assist unattackable units
     Unit const* unitTarget = target->ToUnit();
     if (unitTarget && unitTarget->HasUnitState(UNIT_STATE_UNATTACKABLE))
+        return false;
+
+    // can't assist GMs
+    if (target->GetTypeId() == TYPEID_PLAYER && target->ToPlayer()->IsGameMaster())
         return false;
 
     // can't assist own vehicle or passenger
@@ -2867,23 +2836,28 @@ bool WorldObject::IsValidSpellAssistTarget(WorldObject const* target, SpellInfo 
     }
 
     // can't assist invisible
-    if (!bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_INVISIBLE) && !CanSeeOrDetect(target, bySpell->IsAffectingArea()))
+    if ((!bySpell || !bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_INVISIBLE)) && !CanSeeOrDetect(target, bySpell && bySpell->IsAffectingArea()))
         return false;
 
     // can't assist dead
-    if (!bySpell->IsAllowingDeadTarget() && unitTarget && !unitTarget->IsAlive())
+    if ((!bySpell || !bySpell->IsAllowingDeadTarget()) && unitTarget && !unitTarget->IsAlive())
         return false;
 
     // can't assist untargetable
-    if (!bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_UNTARGETABLE) && unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE))
+    if ((!bySpell || !bySpell->HasAttribute(SPELL_ATTR6_CAN_TARGET_UNTARGETABLE)) && unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE))
         return false;
 
-    if (!bySpell->HasAttribute(SPELL_ATTR6_ASSIST_IGNORE_IMMUNE_FLAG))
+    // check flags for negative spells
+    if (isNegativeSpell && unitTarget && unitTarget->HasUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_TAXI_FLIGHT | UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_UNK_16)))
+        return false;
+
+    if (isNegativeSpell || !bySpell || !bySpell->HasAttribute(SPELL_ATTR6_ASSIST_IGNORE_IMMUNE_FLAG))
     {
         if (unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE))
         {
-            if (unitTarget && unitTarget->IsImmuneToPC())
-                return false;
+            if (!bySpell || !bySpell->HasAttribute(SPELL_ATTR8_ATTACK_IGNORE_IMMUNE_TO_PC_FLAG))
+                if (unitTarget && unitTarget->IsImmuneToPC())
+                    return false;
         }
         else
         {
@@ -2891,6 +2865,10 @@ bool WorldObject::IsValidSpellAssistTarget(WorldObject const* target, SpellInfo 
                 return false;
         }
     }
+
+    // can't assist non-friendly targets
+    if (GetReactionTo(target) < REP_NEUTRAL && target->GetReactionTo(this) < REP_NEUTRAL && (!ToCreature() || !(ToCreature()->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_TREAT_AS_RAID_UNIT)))
+        return false;
 
     // PvP case
     if (unitTarget && unitTarget->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE))
@@ -2919,7 +2897,7 @@ bool WorldObject::IsValidSpellAssistTarget(WorldObject const* target, SpellInfo 
     // !target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP_ATTACKABLE) &&
     else if (unit && unit->HasUnitFlag(UNIT_FLAG_PVP_ATTACKABLE))
     {
-        if (!bySpell->HasAttribute(SPELL_ATTR6_ASSIST_IGNORE_IMMUNE_FLAG))
+        if (!bySpell || !bySpell->HasAttribute(SPELL_ATTR6_ASSIST_IGNORE_IMMUNE_FLAG))
             if (unitTarget && !unitTarget->IsPvP())
                 if (Creature const* creatureTarget = target->ToCreature())
                     return ((creatureTarget->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_TREAT_AS_RAID_UNIT) || (creatureTarget->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_CAN_ASSIST));
