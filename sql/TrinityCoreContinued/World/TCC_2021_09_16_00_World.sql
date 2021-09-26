@@ -5,8 +5,8 @@
 # Targeted database: Shadowlands
 # Parsing date: 09/15/2021 19:18:09
 
-SET @CGUID := 650000;
-SET @OGUID := 400000;
+SET @CGUID := 652000;
+SET @OGUID := 402000;
 
 DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 26 AND `SourceGroup` = 5829;
 INSERT INTO `conditions` (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`, `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`, `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`) VALUES 
@@ -16,7 +16,7 @@ DELETE FROM `phase_area` WHERE `PhaseId` = 5829 AND `AreaID` = 7881;
 INSERT INTO `phase_area` (`AreaId`, `PhaseId`) VALUES 
 (7881, 5825);
 
-DELETE FROM `creature` WHERE `guid` BETWEEN @CGUID+0 AND @CGUID+187;
+DELETE FROM `creature` WHERE `guid` BETWEEN 650000+0 AND 650000+187;
 INSERT INTO `creature` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficulties`, `PhaseId`, `PhaseGroup`, `modelid`, `equipment_id`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `spawndist`, `currentwaypoint`, `curhealth`, `curmana`, `MovementType`, `npcflag`, `unit_flags`, `dynamicflags`, `VerifiedBuild`) VALUES
 (@CGUID+0, 114325, 0, 41, 7881, '0', '5829', 0, 0, 0, -11129.8388671875, -2056.00390625, 749.20147705078125, 3.897521018981933593, 120, 0, 0, 32360, 1534, 0, 0, 0, 0, 38134), -- 114325 (Area: 7881 - Difficulty: 0) (Auras: 79849 - 79849)
 (@CGUID+1, 114326, 0, 41, 7881, '0', '5829', 0, 0, 0, -11074.978515625, -2052.94091796875, 749.84228515625, 5.603647232055664062, 120, 0, 0, 32360, 1534, 0, 0, 0, 0, 38134), -- 114326 (Area: 7881 - Difficulty: 0)
@@ -398,7 +398,7 @@ INSERT INTO `creature_addon` (`guid`, `path_id`, `mount`, `bytes1`, `bytes2`, `e
 (@CGUID+186, 0, 0, 0, 1, 0, 0, 0, 0, '180433 228474'), -- 114404 - 180433 - 180433, 228474 - 228474
 (@CGUID+187, 0, 0, 0, 1, 0, 0, 0, 0, ''); -- 114407
 
-DELETE FROM `gameobject` WHERE `guid` BETWEEN @OGUID+0 AND @OGUID+238;
+DELETE FROM `gameobject` WHERE `guid` BETWEEN 400000+0 AND 400000+238;
 INSERT INTO `gameobject` (`guid`, `id`, `map`, `zoneId`, `areaId`, `spawnDifficulties`, `PhaseId`, `PhaseGroup`, `position_x`, `position_y`, `position_z`, `orientation`, `rotation0`, `rotation1`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`, `VerifiedBuild`) VALUES
 (@OGUID+0, 241957, 0, 41, 7881, '0', '5829', 0, -11057.7490234375, -2029.71728515625, 754.90155029296875, 5.619960308074951171, 0, 0, -0.32556819915771484, 0.945518553256988525, 120, 255, 1, 38134), -- 241957 (Area: 7881 - Difficulty: 0)
 (@OGUID+1, 250498, 0, 41, 7881, '0', '5829', 0, -11068.0283203125, -2022.47021484375, 746.61962890625, 6.213373661041259765, 0, 0, -0.03489875793457031, 0.999390840530395507, 120, 255, 1, 38134), -- 250498 (Area: 7881 - Difficulty: 0)
