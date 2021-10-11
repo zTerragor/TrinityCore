@@ -5543,7 +5543,7 @@ void Spell::EffectCreateConversation()
     if (!unitCaster || !m_targets.HasDst())
         return;
 
-    Conversation::CreateConversation(effectInfo->MiscValue, unitCaster, destTarget->GetPosition(), { GetCaster()->GetGUID() }, GetSpellInfo());
+    Conversation::CreateConversation(effectInfo->MiscValue, unitCaster, destTarget->GetPosition(), ObjectGuid::Empty, GetSpellInfo());
 }
 
 void Spell::EffectAddGarrisonFollower()
@@ -5767,7 +5767,7 @@ void Spell::EffectPlaySceneScriptPackage()
     if (m_caster->GetTypeId() != TYPEID_PLAYER)
         return;
 
-    m_caster->ToPlayer()->GetSceneMgr().PlaySceneByPackageId(effectInfo->MiscValue, SCENEFLAG_UNK1, destTarget);
+    m_caster->ToPlayer()->GetSceneMgr().PlaySceneByPackageId(effectInfo->MiscValue, SceneFlag::PlayerNonInteractablePhased, destTarget);
 }
 
 void Spell::EffectPlayScene()
@@ -5884,7 +5884,7 @@ void Spell::EffectCreatePrivateConversation()
     if (!unitCaster || !unitTarget || unitTarget->GetTypeId() != TYPEID_PLAYER)
         return;
 
-    Conversation::CreateConversation(effectInfo->MiscValue, unitCaster, unitTarget->GetPosition(), { unitTarget->GetGUID() }, GetSpellInfo());
+    Conversation::CreateConversation(effectInfo->MiscValue, unitCaster, unitTarget->GetPosition(), unitTarget->GetGUID(), GetSpellInfo());
 }
 
 void Spell::EffectSendChatMessage()
