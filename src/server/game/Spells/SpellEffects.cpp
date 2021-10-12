@@ -60,6 +60,7 @@
 #include "PhasingHandler.h"
 #include "Player.h"
 #include "ReputationMgr.h"
+#include "SceneObject.h"
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
 #include "SkillExtraItems.h"
@@ -193,7 +194,7 @@ NonDefaultConstructible<SpellEffectHandlerFn> SpellEffectHandlers[TOTAL_SPELL_EF
     &Spell::EffectDestroyAllTotems,                         //110 SPELL_EFFECT_DESTROY_ALL_TOTEMS
     &Spell::EffectDurabilityDamage,                         //111 SPELL_EFFECT_DURABILITY_DAMAGE
     &Spell::EffectNULL,                                     //112 SPELL_EFFECT_112
-    &Spell::EffectNULL,                                     //113 SPELL_EFFECT_CANCEL_CONVERSATION
+    &Spell::EffectCancelConversation,                       //113 SPELL_EFFECT_CANCEL_CONVERSATION
     &Spell::EffectTaunt,                                    //114 SPELL_EFFECT_ATTACK_ME
     &Spell::EffectDurabilityDamagePCT,                      //115 SPELL_EFFECT_DURABILITY_DAMAGE_PCT
     &Spell::EffectSkinPlayerCorpse,                         //116 SPELL_EFFECT_SKIN_PLAYER_CORPSE       one spell: Remove Insignia, bg usage, required special corpse flags...
@@ -276,8 +277,8 @@ NonDefaultConstructible<SpellEffectHandlerFn> SpellEffectHandlers[TOTAL_SPELL_EF
     &Spell::EffectNULL,                                     //193 SPELL_EFFECT_START_PET_BATTLE
     &Spell::EffectUnused,                                   //194 SPELL_EFFECT_194
     &Spell::EffectPlaySceneScriptPackage,                   //195 SPELL_EFFECT_PLAY_SCENE_SCRIPT_PACKAGE
-    &Spell::EffectNULL,                                     //196 SPELL_EFFECT_CREATE_SCENE_OBJECT
-    &Spell::EffectNULL,                                     //197 SPELL_EFFECT_CREATE_PERSONAL_SCENE_OBJECT
+    &Spell::EffectCreateSceneObject,                        //196 SPELL_EFFECT_CREATE_SCENE_OBJECT
+    &Spell::EffectCreatePrivateSceneObject,                 //197 SPELL_EFFECT_CREATE_PERSONAL_SCENE_OBJECT
     &Spell::EffectPlayScene,                                //198 SPELL_EFFECT_PLAY_SCENE
     &Spell::EffectNULL,                                     //199 SPELL_EFFECT_DESPAWN_SUMMON
     &Spell::EffectHealBattlePetPct,                         //200 SPELL_EFFECT_HEAL_BATTLEPET_PCT
@@ -5546,6 +5547,26 @@ void Spell::EffectCreateConversation()
     Conversation::CreateConversation(effectInfo->MiscValue, unitCaster, destTarget->GetPosition(), ObjectGuid::Empty, GetSpellInfo());
 }
 
+void Spell::EffectCancelConversation()
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT_TARGET)
+        return;
+
+    if (!unitTarget)
+        return;
+
+    std::vector<WorldObject*> objs;
+    Trinity::ObjectEntryAndPrivateOwnerIfExistsCheck check(unitTarget->GetGUID(), effectInfo->MiscValue);
+    Trinity::WorldObjectListSearcher<Trinity::ObjectEntryAndPrivateOwnerIfExistsCheck> checker(unitTarget, objs, check, GRID_MAP_TYPE_MASK_CONVERSATION);
+    Cell::VisitGridObjects(unitTarget, checker, 100.0f);
+
+    for (WorldObject* obj : objs)
+    {
+        if (Conversation* convo = obj->ToConversation())
+            convo->Remove();
+    }
+}
+
 void Spell::EffectAddGarrisonFollower()
 {
     if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT_TARGET)
@@ -5768,6 +5789,59 @@ void Spell::EffectPlaySceneScriptPackage()
         return;
 
     m_caster->ToPlayer()->GetSceneMgr().PlaySceneByPackageId(effectInfo->MiscValue, SceneFlag::PlayerNonInteractablePhased, destTarget);
+}
+
+template<typename TargetInfo>
+bool IsUnitTargetSceneObjectAura(Spell const* spell, TargetInfo const& target)
+{
+    if (target.TargetGUID != spell->GetCaster()->GetGUID())
+        return false;
+
+    for (SpellEffectInfo const& spellEffectInfo : spell->GetSpellInfo()->GetEffects())
+        if (target.EffectMask & (1 << spellEffectInfo.EffectIndex) && spellEffectInfo.IsUnitOwnedAuraEffect())
+            return true;
+
+    return false;
+}
+
+void Spell::EffectCreateSceneObject()
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT)
+        return;
+
+    if (!unitCaster || !m_targets.HasDst())
+        return;
+
+    if (SceneObject* sceneObject = SceneObject::CreateSceneObject(effectInfo->MiscValue, unitCaster, destTarget->GetPosition(), ObjectGuid::Empty))
+    {
+        bool hasAuraTargetingCaster = std::find_if(m_UniqueTargetInfo.begin(), m_UniqueTargetInfo.end(), [this](TargetInfo const& target)
+        {
+            return IsUnitTargetSceneObjectAura(this, target);
+        }) != m_UniqueTargetInfo.end();
+
+        if (hasAuraTargetingCaster)
+            sceneObject->SetCreatedBySpellCast(m_castId);
+    }
+}
+
+void Spell::EffectCreatePrivateSceneObject()
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT)
+        return;
+
+    if (!unitCaster || !m_targets.HasDst())
+        return;
+
+    if (SceneObject* sceneObject = SceneObject::CreateSceneObject(effectInfo->MiscValue, unitCaster, destTarget->GetPosition(), unitCaster->GetGUID()))
+    {
+        bool hasAuraTargetingCaster = std::find_if(m_UniqueTargetInfo.begin(), m_UniqueTargetInfo.end(), [this](TargetInfo const& target)
+        {
+            return IsUnitTargetSceneObjectAura(this, target);
+        }) != m_UniqueTargetInfo.end();
+
+        if (hasAuraTargetingCaster)
+            sceneObject->SetCreatedBySpellCast(m_castId);
+    }
 }
 
 void Spell::EffectPlayScene()
