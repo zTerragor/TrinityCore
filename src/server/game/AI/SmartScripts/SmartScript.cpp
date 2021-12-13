@@ -89,7 +89,6 @@ bool SmartScript::IsSmart(GameObject* g, bool silent)
     if (!g)
         return false;
 
-{
     bool smart = true;
     if (!dynamic_cast<SmartGameObjectAI*>(g->AI()))
         smart = false;
@@ -2466,25 +2465,11 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             {
                 if (Player* playerTarget = target->ToPlayer())
                 {
-                {
-                    if (Player* playerTarget = target->ToPlayer())
-                    {
-                        ConversationActorMap dynamicActors;
-
-                        if (e.action.conversation.baseObjectDynamicActorIdx > 0)
-                            dynamicActors[e.action.conversation.baseObjectDynamicActorIdx - 1] = baseObject->GetGUID();
                     Conversation* conversation = Conversation::CreateConversation(e.action.conversation.id, playerTarget,
                         *playerTarget, playerTarget->GetGUID(), nullptr);
                     if (!conversation)
                         TC_LOG_WARN("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_CREATE_CONVERSATION: id %u, baseObject %s, target %s - failed to create conversation",
                             e.action.conversation.id, !baseObject ? "" : baseObject->GetName().c_str(), playerTarget->GetName().c_str());
-
-                        Conversation* conversation = Conversation::CreateConversation(e.action.conversation.id, playerTarget,
-                            *playerTarget, { playerTarget->GetGUID() }, nullptr, dynamicActors);
-                        if (!conversation)
-                            TC_LOG_WARN("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_TALK_CONVERSATION: id %u, baseObject %s, target %s - failed to create",
-                                e.action.conversation.id, baseObject->GetName().c_str(), playerTarget->GetName().c_str());
-                    }
                 }
             }
 

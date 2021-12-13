@@ -92,7 +92,6 @@ void Conversation::Remove()
 }
 
 Conversation* Conversation::CreateConversation(uint32 conversationEntry, Unit* creator, Position const& pos, ObjectGuid privateObjectOwner, SpellInfo const* spellInfo /*= nullptr*/)
-Conversation* Conversation::CreateConversation(uint32 conversationEntry, Unit* creator, Position const& pos, GuidUnorderedSet&& participants, SpellInfo const* spellInfo /*= nullptr*/, ConversationActorMap const& dynamicActors /*= {}*/)
 {
     ConversationTemplate const* conversationTemplate = sConversationDataStore->GetConversationTemplate(conversationEntry);
     if (!conversationTemplate)
@@ -102,7 +101,6 @@ Conversation* Conversation::CreateConversation(uint32 conversationEntry, Unit* c
 
     Conversation* conversation = new Conversation();
     if (!conversation->Create(lowGuid, conversationEntry, creator->GetMap(), creator, pos, privateObjectOwner, spellInfo))
-    if (!conversation->Create(lowGuid, conversationEntry, creator->GetMap(), creator, pos, std::move(participants), spellInfo, dynamicActors))
     {
         delete conversation;
         return nullptr;
@@ -112,7 +110,6 @@ Conversation* Conversation::CreateConversation(uint32 conversationEntry, Unit* c
 }
 
 bool Conversation::Create(ObjectGuid::LowType lowGuid, uint32 conversationEntry, Map* map, Unit* creator, Position const& pos, ObjectGuid privateObjectOwner, SpellInfo const* /*spellInfo = nullptr*/)
-bool Conversation::Create(ObjectGuid::LowType lowGuid, uint32 conversationEntry, Map* map, Unit* creator, Position const& pos, GuidUnorderedSet&& participants, SpellInfo const* /*spellInfo = nullptr*/, ConversationActorMap const& dynamicActors /*= {}*/)
 {
     ConversationTemplate const* conversationTemplate = sConversationDataStore->GetConversationTemplate(conversationEntry);
     ASSERT(conversationTemplate);
@@ -153,9 +150,6 @@ bool Conversation::Create(ObjectGuid::LowType lowGuid, uint32 conversationEntry,
             AddActor(pair.second->GetGUID(), actorIndex);
         }
     }
-
-    for (ConversationActorMap::value_type const& dynamicActor : dynamicActors)
-        AddActor(dynamicActor.second, dynamicActor.first);
 
     std::set<uint16> actorIndices;
     std::vector<UF::ConversationLine> lines;
