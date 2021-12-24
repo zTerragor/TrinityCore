@@ -276,7 +276,16 @@ void SmartAI::ReturnToLastOOCPos()
 
 void SmartAI::UpdateAI(uint32 diff)
 {
+    if (!me->IsAlive())
+    {
+        if (IsEngaged())
+            EngagementOver();
+        return;
+    }
+
     CheckConditions(diff);
+
+    bool hasVictim = UpdateVictim();
 
     GetScript()->OnUpdate(diff);
 
@@ -287,7 +296,7 @@ void SmartAI::UpdateAI(uint32 diff)
     if (!IsAIControlled())
         return;
 
-    if (!UpdateVictim())
+    if (!hasVictim)
         return;
 
     if (_canAutoAttack)
@@ -550,8 +559,8 @@ void SmartAI::JustReachedHome()
             if (me->GetWaypointPath())
                 me->GetMotionMaster()->MovePath(me->GetWaypointPath(), true);
         }
-        else
-            me->ResumeMovement();
+
+        me->ResumeMovement();
     }
     else if (formation->IsFormed())
         me->GetMotionMaster()->MoveIdle(); // wait the order of leader
@@ -683,6 +692,9 @@ void SmartAI::OnCharmed(bool /*isNew*/)
 
     _charmed = charmed;
 
+    if (charmed && !me->isPossessed() && !me->IsVehicle())
+        me->GetMotionMaster()->MoveFollow(me->GetCharmer(), PET_FOLLOW_DIST, me->GetFollowAngle());
+
     if (!charmed && !me->IsInEvadeMode())
     {
         if (_repeatWaypointPath)
@@ -696,6 +708,9 @@ void SmartAI::OnCharmed(bool /*isNew*/)
                 if (Unit* lastCharmer = ObjectAccessor::GetUnit(*me, me->LastCharmerGUID))
                     me->EngageWithTarget(lastCharmer);
             me->LastCharmerGUID.Clear();
+
+            if (!me->IsInCombat())
+                EnterEvadeMode(EVADE_REASON_NO_HOSTILES);
         }
     }
 
@@ -797,7 +812,7 @@ void SmartAI::SetCombatMove(bool on)
         {
             if (!me->HasReactState(REACT_PASSIVE) && me->GetVictim() && !me->GetMotionMaster()->HasMovementGenerator([](MovementGenerator const* movement) -> bool
             {
-                return movement->Mode == MOTION_MODE_DEFAULT && movement->Priority == MOTION_PRIORITY_NORMAL;
+                return movement->GetMovementGeneratorType() == CHASE_MOTION_TYPE && movement->Mode == MOTION_MODE_DEFAULT && movement->Priority == MOTION_PRIORITY_NORMAL;
             }))
             {
                 SetRun(_run);
@@ -884,12 +899,12 @@ void SmartAI::CheckConditions(uint32 diff)
 
     if (_vehicleConditionsTimer <= diff)
     {
-        if (Vehicle * vehicleKit = me->GetVehicleKit())
+        if (Vehicle* vehicleKit = me->GetVehicleKit())
         {
-            for (SeatMap::iterator itr = vehicleKit->Seats.begin(); itr != vehicleKit->Seats.end(); ++itr)
-                if (Unit * passenger = ObjectAccessor::GetUnit(*me, itr->second.Passenger.Guid))
+            for (std::pair<int8 const, VehicleSeat>& seat : vehicleKit->Seats)
+                if (Unit* passenger = ObjectAccessor::GetUnit(*me, seat.second.Passenger.Guid))
                 {
-                    if (Player * player = passenger->ToPlayer())
+                    if (Player* player = passenger->ToPlayer())
                     {
                         if (!sConditionMgr->IsObjectMeetingNotGroupedConditions(CONDITION_SOURCE_TYPE_CREATURE_TEMPLATE_VEHICLE, me->GetEntry(), player, me))
                         {
