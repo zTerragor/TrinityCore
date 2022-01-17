@@ -34,6 +34,7 @@
 #include "LFGMgr.h"
 #include "Log.h"
 #include "NPCPackets.h"
+#include "ObjectMgr.h"
 #include "Pet.h"
 #include "ReputationMgr.h"
 #include "SkillDiscovery.h"
@@ -43,6 +44,7 @@
 #include "SpellPackets.h"
 #include "SpellScript.h"
 #include "Vehicle.h"
+#include "World.h"
 
 class spell_gen_absorb0_hitlimit1 : public AuraScript
 {
@@ -1872,6 +1874,80 @@ class spell_gen_increase_stats_buff : public SpellScriptLoader
         {
             return new spell_gen_increase_stats_buff_SpellScript();
         }
+};
+
+enum LichPet
+{
+    NPC_LICH_PET = 36979,
+
+    SPELL_LICH_PET_AURA = 69732,
+    SPELL_LICH_PET_AURA_ONKILL = 69731
+};
+
+// 69732 - Lich Pet Aura
+class spell_gen_lich_pet_aura : public AuraScript
+{
+    PrepareAuraScript(spell_gen_lich_pet_aura);
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        return (eventInfo.GetProcTarget()->GetTypeId() == TYPEID_PLAYER);
+    }
+
+    void HandleProc(AuraEffect* /* aurEff */, ProcEventInfo& /* eventInfo */)
+    {
+        PreventDefaultAction();
+
+        std::list<TempSummon*> minionList;
+        GetUnitOwner()->GetAllMinionsByEntry(minionList, NPC_LICH_PET);
+        for (Creature* minion : minionList)
+            if (minion->IsAIEnabled())
+                minion->AI()->DoCastSelf(SPELL_LICH_PET_AURA_ONKILL);
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_gen_lich_pet_aura::CheckProc);
+        OnEffectProc += AuraEffectProcFn(spell_gen_lich_pet_aura::HandleProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL);
+    }
+};
+
+// 69735 - Lich Pet OnSummon
+class spell_gen_lich_pet_onsummon : public SpellScript
+{
+    PrepareSpellScript(spell_gen_lich_pet_onsummon);
+
+    bool Validate(SpellInfo const* /* spellInfo */) override
+    {
+        return ValidateSpellInfo({ SPELL_LICH_PET_AURA });
+    }
+
+    void HandleScriptEffect(SpellEffIndex /* effIndex */)
+    {
+        Unit* target = GetHitUnit();
+        target->CastSpell(target, SPELL_LICH_PET_AURA, true);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_gen_lich_pet_onsummon::HandleScriptEffect, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
+    }
+};
+
+// 69736 - Lich Pet Aura Remove
+class spell_gen_lich_pet_aura_remove : public SpellScript
+{
+    PrepareSpellScript(spell_gen_lich_pet_aura_remove);
+
+    void HandleScriptEffect(SpellEffIndex /* effIndex */)
+    {
+        GetHitUnit()->RemoveAurasDueToSpell(SPELL_LICH_PET_AURA);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_gen_lich_pet_aura_remove::HandleScriptEffect, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
+    }
 };
 
 enum GenericLifebloom
@@ -4496,6 +4572,48 @@ class spell_gen_impatient_mind : public AuraScript
     }
 };
 
+// 269083 - Enlisted
+// 282559 - Enlisted
+class spell_gen_war_mode_enlisted : public AuraScript
+{
+    PrepareAuraScript(spell_gen_war_mode_enlisted);
+
+    void CalcWarModeBonus(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
+    {
+        Player* target = GetUnitOwner()->ToPlayer();
+        if (!target)
+            return;
+
+        if (target->GetTeamId() == sWorld->GetWarModeDominantFaction())
+            return;
+
+        amount += sWorld->GetWarModeOutnumberedFactionReward();
+    }
+
+    void Register() override
+    {
+        SpellInfo const* spellInfo = sSpellMgr->AssertSpellInfo(m_scriptSpellId, DIFFICULTY_NONE);
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_XP_PCT))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_MOD_XP_PCT);
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_XP_QUEST_PCT))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_MOD_XP_QUEST_PCT);
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_CURRENCY_GAIN_FROM_SOURCE))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_MOD_CURRENCY_GAIN_FROM_SOURCE);
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_MONEY_GAIN))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_MOD_MONEY_GAIN);
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_ANIMA_GAIN))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_MOD_ANIMA_GAIN);
+
+        if (spellInfo->HasAura(SPELL_AURA_DUMMY))
+            DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_gen_war_mode_enlisted::CalcWarModeBonus, EFFECT_ALL, SPELL_AURA_DUMMY);
+    }
+};
+
 enum DefenderOfAzerothData
 {
     SPELL_DEATH_GATE_TELEPORT_STORMWIND = 316999,
@@ -4586,6 +4704,34 @@ class spell_defender_of_azeroth_speak_with_mograine : public SpellScript
     }
 };
 
+// 118301 - Summon Battle Pet
+class spell_summon_battle_pet : public SpellScript
+{
+    PrepareSpellScript(spell_summon_battle_pet);
+
+    void HandleSummon(SpellEffIndex effIndex)
+    {
+        uint32 creatureId = uint32(GetSpellValue()->EffectBasePoints[effIndex]);
+        if (sObjectMgr->GetCreatureTemplate(creatureId))
+        {
+            PreventHitDefaultEffect(effIndex);
+
+            Unit* caster = GetCaster();
+            SummonPropertiesEntry const* properties = sSummonPropertiesStore.LookupEntry(uint32(GetEffectInfo().MiscValueB));
+            uint32 duration = uint32(GetSpellInfo()->CalcDuration(caster));
+            Position pos = GetHitDest()->GetPosition();
+
+            if (Creature* summon = caster->GetMap()->SummonCreature(creatureId, pos, properties, duration, caster, GetSpellInfo()->Id))
+                summon->SetImmuneToAll(true);
+        }
+    }
+
+    void Register() override
+    {
+        OnEffectHit += SpellEffectFn(spell_summon_battle_pet::HandleSummon, EFFECT_0, SPELL_EFFECT_SUMMON);
+    }
+};
+
 void AddSC_generic_spell_scripts()
 {
     RegisterAuraScript(spell_gen_absorb0_hitlimit1);
@@ -4641,6 +4787,9 @@ void AddSC_generic_spell_scripts()
     new spell_gen_increase_stats_buff("spell_pri_power_word_fortitude");
     new spell_gen_increase_stats_buff("spell_pri_shadow_protection");
     RegisterAuraScript(spell_gen_interrupt);
+    RegisterAuraScript(spell_gen_lich_pet_aura);
+    RegisterSpellScript(spell_gen_lich_pet_onsummon);
+    RegisterSpellScript(spell_gen_lich_pet_aura_remove);
     new spell_gen_lifebloom("spell_hexlord_lifebloom", SPELL_HEXLORD_MALACRASS_LIFEBLOOM_FINAL_HEAL);
     new spell_gen_lifebloom("spell_tur_ragepaw_lifebloom", SPELL_TUR_RAGEPAW_LIFEBLOOM_FINAL_HEAL);
     new spell_gen_lifebloom("spell_cenarion_scout_lifebloom", SPELL_CENARION_SCOUT_LIFEBLOOM_FINAL_HEAL);
@@ -4720,6 +4869,8 @@ void AddSC_generic_spell_scripts()
     RegisterSpellScript(spell_gen_azgalor_rain_of_fire_hellfire_citadel);
     RegisterAuraScript(spell_gen_face_rage);
     RegisterAuraScript(spell_gen_impatient_mind);
+    RegisterAuraScript(spell_gen_war_mode_enlisted);
     RegisterSpellScript(spell_defender_of_azeroth_death_gate_selector);
     RegisterSpellScript(spell_defender_of_azeroth_speak_with_mograine);
+    RegisterSpellScript(spell_summon_battle_pet);
 }

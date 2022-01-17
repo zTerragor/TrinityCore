@@ -17,7 +17,6 @@
 
 #include "SpellMgr.h"
 #include "BattlefieldMgr.h"
-#include "BattlefieldWG.h"
 #include "BattlegroundMgr.h"
 #include "Chat.h"
 #include "Containers.h"
@@ -635,7 +634,10 @@ SpellEnchantProcEntry const* SpellMgr::GetSpellEnchantProcEvent(uint32 enchId) c
 
 bool SpellMgr::IsArenaAllowedEnchancment(uint32 ench_id) const
 {
-    return mEnchantCustomAttr[ench_id];
+    if (SpellItemEnchantmentEntry const* enchantment = sSpellItemEnchantmentStore.LookupEntry(ench_id))
+        return enchantment->GetFlags().HasFlag(SpellItemEnchantmentFlags::AllowEnteringArena);
+
+    return false;
 }
 
 std::vector<int32> const* SpellMgr::GetSpellLinked(int32 spell_id) const
@@ -1624,6 +1626,11 @@ void SpellMgr::LoadSpellProcs()
                     if (!found)
                         TC_LOG_ERROR("sql.sql", "The `spell_proc` table entry for spellId %u has Attribute PROC_ATTR_REQ_SPELLMOD, but spell has no spell mods. Proc will not be triggered", spellInfo->Id);
                 }
+                if (procEntry.AttributesMask & ~PROC_ATTR_ALL_ALLOWED)
+                {
+                    TC_LOG_ERROR("sql.sql", "The `spell_proc` table entry for spellId %u has `AttributesMask` value specifying invalid attributes 0x%02X.", spellInfo->Id, procEntry.AttributesMask & ~PROC_ATTR_ALL_ALLOWED);
+                    procEntry.AttributesMask &= PROC_ATTR_ALL_ALLOWED;
+                }
 
                 mSpellProcMap[{ spellInfo->Id, spellInfo->Difficulty }] = procEntry;
 
@@ -1987,42 +1994,6 @@ void SpellMgr::LoadSpellPetAuras()
     } while (result->NextRow());
 
     TC_LOG_INFO("server.loading", ">> Loaded %u spell pet auras in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
-}
-
-// Fill custom data about enchancments
-void SpellMgr::LoadEnchantCustomAttr()
-{
-    uint32 oldMSTime = getMSTime();
-
-    uint32 size = sSpellItemEnchantmentStore.GetNumRows();
-    mEnchantCustomAttr.resize(size);
-
-    for (uint32 i = 0; i < size; ++i)
-       mEnchantCustomAttr[i] = false;
-
-    uint32 count = 0;
-    for (SpellInfo const& spellInfo : mSpellInfoMap)
-    {
-        /// @todo find a better check
-        if (!spellInfo.HasAttribute(SPELL_ATTR2_PRESERVE_ENCHANT_IN_ARENA) || !spellInfo.HasAttribute(SPELL_ATTR0_NOT_SHAPESHIFT))
-            continue;
-
-        for (SpellEffectInfo const& spellEffectInfo : spellInfo.GetEffects())
-        {
-            if (spellEffectInfo.Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY)
-            {
-                uint32 enchId = spellEffectInfo.MiscValue;
-                SpellItemEnchantmentEntry const* ench = sSpellItemEnchantmentStore.LookupEntry(enchId);
-                if (!ench)
-                    continue;
-                mEnchantCustomAttr[enchId] = true;
-                ++count;
-                break;
-            }
-        }
-    }
-
-    TC_LOG_INFO("server.loading", ">> Loaded %u custom enchant attributes in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
 }
 
 void SpellMgr::LoadSpellEnchantProcData()
@@ -2833,7 +2804,7 @@ void SpellMgr::LoadSpellInfoServerside()
         {
             Field* fields = spellsResult->Fetch();
             uint32 spellId = fields[0].GetUInt32();
-            Difficulty difficulty = Difficulty(fields[2].GetUInt32());
+            Difficulty difficulty = Difficulty(fields[1].GetUInt32());
             if (sSpellNameStore.HasRecord(spellId))
             {
                 TC_LOG_ERROR("sql.sql", "Serverside spell %u difficulty %u is already loaded from file. Overriding existing spells is not allowed.",
@@ -3439,6 +3410,15 @@ void SpellMgr::LoadSpellInfoCorrections()
                 spellEffectInfo->ApplyAuraName = SPELL_AURA_PERIODIC_TRIGGER_SPELL;
             });
         });
+
+        // Lich Pet
+        ApplySpellFix({ 70050 }, [](SpellInfo* spellInfo)
+        {
+            ApplySpellEffectFix(spellInfo, EFFECT_0, [](SpellEffectInfo* spellEffectInfo)
+            {
+                spellEffectInfo->TriggerSpell = 70049;
+            });
+        });
     }
 
     // Allows those to crit
@@ -3586,7 +3566,8 @@ void SpellMgr::LoadSpellInfoCorrections()
         58552, // Return to Orgrimmar
         58533, // Return to Stormwind
         21855, // Challenge Flag
-        51122  // Fierce Lightning Stike
+        51122, // Fierce Lightning Stike
+        71848  // Toxic Wasteling Find Target
     }, [](SpellInfo* spellInfo)
     {
         spellInfo->MaxAffectedTargets = 1;
@@ -3984,6 +3965,18 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->DurationEntry = sSpellDurationStore.LookupEntry(4); // 2 minutes
     });
 
+    // Dark Conclave Ritualist Channel
+    ApplySpellFix({ 38469 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->RangeEntry = sSpellRangeStore.LookupEntry(6);  // 100yd
+    });
+
+    // Chrono Shift (enemy slow part)
+    ApplySpellFix({ 236299 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->RangeEntry = sSpellRangeStore.LookupEntry(6);  // 100yd
+    });
+
     //
     // VIOLET HOLD SPELLS
     //
@@ -4250,13 +4243,6 @@ void SpellMgr::LoadSpellInfoCorrections()
         {
             spellEffectInfo->TargetB = SpellImplicitTargetInfo(TARGET_UNIT_TARGET_ENEMY);
         });
-    });
-
-    // Mutated Transformation (Professor Putricide)
-    ApplySpellFix({ 70402 }, [](SpellInfo* spellInfo)
-    {
-        // Resistance is calculated inside of SpellScript
-        spellInfo->AttributesEx4 |= SPELL_ATTR4_IGNORE_RESISTANCES;
     });
 
     // Empowered Flare (Blood Prince Council)
