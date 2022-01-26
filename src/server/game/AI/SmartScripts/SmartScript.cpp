@@ -1285,7 +1285,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
                 y += e.target.y;
                 z += e.target.z;
                 o += e.target.o;
-                if (Creature* summon = summoner->SummonCreature(e.action.summonCreature.creature, x, y, z, o, (TempSummonType)e.action.summonCreature.type, e.action.summonCreature.duration, privateObjectOwner))
+                if (Creature* summon = summoner->SummonCreature(e.action.summonCreature.creature, x, y, z, o, (TempSummonType)e.action.summonCreature.type, Milliseconds(e.action.summonCreature.duration), privateObjectOwner))
                     if (e.action.summonCreature.attackInvoker)
                         summon->AI()->AttackStart(target->ToUnit());
             }
@@ -1293,7 +1293,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             if (e.GetTargetType() != SMART_TARGET_POSITION)
                 break;
 
-            if (Creature* summon = summoner->SummonCreature(e.action.summonCreature.creature, e.target.x, e.target.y, e.target.z, e.target.o, (TempSummonType)e.action.summonCreature.type, e.action.summonCreature.duration, privateObjectOwner))
+            if (Creature* summon = summoner->SummonCreature(e.action.summonCreature.creature, e.target.x, e.target.y, e.target.z, e.target.o, (TempSummonType)e.action.summonCreature.type, Milliseconds(e.action.summonCreature.duration), privateObjectOwner))
                 if (unit && e.action.summonCreature.attackInvoker)
                     summon->AI()->AttackStart(unit);
             break;
@@ -1308,14 +1308,14 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             {
                 Position pos = target->GetPositionWithOffset(Position(e.target.x, e.target.y, e.target.z, e.target.o));
                 QuaternionData rot = QuaternionData::fromEulerAnglesZYX(pos.GetOrientation(), 0.f, 0.f);
-                summoner->SummonGameObject(e.action.summonGO.entry, pos, rot, e.action.summonGO.despawnTime, GOSummonType(e.action.summonGO.summonType));
+                summoner->SummonGameObject(e.action.summonGO.entry, pos, rot, Seconds(e.action.summonGO.despawnTime), GOSummonType(e.action.summonGO.summonType));
             }
 
             if (e.GetTargetType() != SMART_TARGET_POSITION)
                 break;
 
             QuaternionData rot = QuaternionData::fromEulerAnglesZYX(e.target.o, 0.f, 0.f);
-            summoner->SummonGameObject(e.action.summonGO.entry, Position(e.target.x, e.target.y, e.target.z, e.target.o), rot, e.action.summonGO.despawnTime, GOSummonType(e.action.summonGO.summonType));
+            summoner->SummonGameObject(e.action.summonGO.entry, Position(e.target.x, e.target.y, e.target.z, e.target.o), rot, Seconds(e.action.summonGO.despawnTime), GOSummonType(e.action.summonGO.summonType));
             break;
         }
         case SMART_ACTION_KILL_UNIT:
@@ -2214,7 +2214,6 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             }
             break;
         }
-            /* fallthrough */
         case SMART_ACTION_SET_CORPSE_DELAY:
         {
             for (WorldObject* const target : targets)
@@ -2520,6 +2519,36 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
                 TC_LOG_WARN("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_ADD_TO_STORED_TARGET_LIST: var %u, baseObject %s, event %u - tried to add no targets to stored target list",
                     e.action.addToStoredTargets.id, !baseObject ? "" : baseObject->GetName().c_str(), e.event_id);
             }
+            break;
+        }
+        case SMART_ACTION_BECOME_PERSONAL_CLONE_FOR_PLAYER:
+        {
+            WorldObject* baseObject = GetBaseObject();
+
+            auto doCreatePersonalClone = [&](Position const& position, Unit* owner)
+            {
+                ObjectGuid privateObjectOwner = owner->GetGUID();
+                if (Creature* summon = GetBaseObject()->SummonPersonalClone(position, TempSummonType(e.action.becomePersonalClone.type), Milliseconds(e.action.becomePersonalClone.duration), 0, 0, privateObjectOwner))
+                    if (IsSmart(summon))
+                        ENSURE_AI(SmartAI, summon->AI())->SetTimedActionList(e, e.entryOrGuid, owner, e.event_id + 1);
+            };
+
+
+            // if target is position then targets container was empty
+            if (e.GetTargetType() != SMART_TARGET_POSITION)
+            {
+                for (WorldObject* target : targets)
+                    if (Player* playerTarget = Object::ToPlayer(target))
+                        doCreatePersonalClone(baseObject->GetPosition(), playerTarget);
+            }
+            else
+            {
+                if (Player* invoker = Object::ToPlayer(GetLastInvoker()))
+                    doCreatePersonalClone({ e.target.x, e.target.y, e.target.z, e.target.o }, invoker);
+            }
+
+            // action list will continue on personal clones
+            Trinity::Containers::EraseIf(mTimedActionList, [e](SmartScriptHolder const& script) { return script.event_id > e.event_id; });
             break;
         }
         default:
@@ -3417,6 +3446,7 @@ void SmartScript::ProcessEvent(SmartScriptHolder& e, Unit* unit, uint32 var0, ui
             break;
         }
         case SMART_EVENT_SUMMONED_UNIT:
+        case SMART_EVENT_SUMMONED_UNIT_DIES:
         {
             if (!IsCreature(unit))
                 return;
@@ -3916,6 +3946,9 @@ void SmartScript::OnUpdate(uint32 const diff)
         && !GetBaseObject())
         return;
 
+    if (me && me->IsInEvadeMode())
+        return;
+
     InstallEvents();//before UpdateTimers
 
     for (SmartScriptHolder& mEvent : mEvents)
@@ -3935,17 +3968,20 @@ void SmartScript::OnUpdate(uint32 const diff)
     if (!mTimedActionList.empty())
     {
         isProcessingTimedActionList = true;
-        for (SmartScriptHolder& scriptholder : mTimedActionList)
+
+        for (size_t i = 0; i < mTimedActionList.size(); ++i)
         {
-            if (scriptholder.enableTimed)
+            SmartScriptHolder& scriptHolder = mTimedActionList[i];
+            if (scriptHolder.enableTimed)
             {
-                UpdateTimer(scriptholder, diff);
+                UpdateTimer(scriptHolder, diff);
                 needCleanup = false;
             }
         }
 
         isProcessingTimedActionList = false;
     }
+
     if (needCleanup)
         mTimedActionList.clear();
 
@@ -4187,7 +4223,7 @@ Unit* SmartScript::DoFindClosestFriendlyInRange(float range, bool playerOnly) co
     return unit;
 }
 
-void SmartScript::SetTimedActionList(SmartScriptHolder& e, uint32 entry, Unit* invoker)
+void SmartScript::SetTimedActionList(SmartScriptHolder& e, uint32 entry, Unit* invoker, uint32 startFromEventId)
 {
     //do NOT clear mTimedActionList if it's being iterated because it will invalidate the iterator and delete
     // any SmartScriptHolder contained like the "e" parameter passed to this function
@@ -4198,13 +4234,16 @@ void SmartScript::SetTimedActionList(SmartScriptHolder& e, uint32 entry, Unit* i
     }
 
     // Do NOT allow to start a new actionlist if a previous one is already running, unless explicitly allowed. We need to always finish the current actionlist
-    if (!e.action.timedActionList.allowOverride && !mTimedActionList.empty())
+    if (e.GetActionType() == SMART_ACTION_CALL_TIMED_ACTIONLIST && !e.action.timedActionList.allowOverride && !mTimedActionList.empty())
         return;
 
     mTimedActionList.clear();
     mTimedActionList = sSmartScriptMgr->GetScript(entry, SMART_SCRIPT_TYPE_TIMED_ACTIONLIST);
     if (mTimedActionList.empty())
         return;
+
+    Trinity::Containers::EraseIf(mTimedActionList, [startFromEventId](SmartScriptHolder const& script) { return script.event_id < startFromEventId; });
+
     mTimedActionListInvoker = invoker ? invoker->GetGUID() : ObjectGuid::Empty;
     for (SmartAIEventList::iterator i = mTimedActionList.begin(); i != mTimedActionList.end(); ++i)
     {

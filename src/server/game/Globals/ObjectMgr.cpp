@@ -2904,7 +2904,7 @@ SpawnData const* ObjectMgr::GetSpawnData(SpawnObjectType type, ObjectGuid::LowTy
         case SPAWN_TYPE_AREATRIGGER:
             return sAreaTriggerDataStore->GetAreaTriggerSpawn(spawnId);
         default:
-            ASSERT(false, "Invalid spawn object type %u", uint32(type));
+            ABORT_MSG("Invalid spawn object type %u", uint32(type));
             return nullptr;
     }
 }
@@ -2924,7 +2924,7 @@ void ObjectMgr::OnDeleteSpawnData(SpawnData const* data)
         _spawnGroupMapStore.erase(it);
         return;
     }
-    ASSERT(false, "Spawn data (%u," UI64FMTD ") being removed is member of spawn group %u, but not actually listed in the lookup table for that group!", uint32(data->type), data->spawnId, data->spawnGroupData->groupId);
+    ABORT_MSG("Spawn data (%u," UI64FMTD ") being removed is member of spawn group %u, but not actually listed in the lookup table for that group!", uint32(data->type), data->spawnId, data->spawnGroupData->groupId);
 }
 
 void ObjectMgr::AddGameobjectToGrid(GameObjectData const* data)
@@ -4464,37 +4464,37 @@ void ObjectMgr::LoadQuests()
     QueryResult result = WorldDatabase.Query("SELECT "
         //0  1          2               3                4            5            6                  7                8                   9
         "ID, QuestType, QuestPackageID, ContentTuningID, QuestSortID, QuestInfoID, SuggestedGroupNum, RewardNextQuest, RewardXPDifficulty, RewardXPMultiplier, "
-        //10          11                     12                     13                14           15           16               17
-        "RewardMoney, RewardMoneyDifficulty, RewardMoneyMultiplier, RewardBonusMoney, RewardSpell, RewardHonor, RewardKillHonor, StartItem, "
-        //18                         19                          20                        21     22       23
+        //10                    11                     12                13           14           15               16
+        "RewardMoneyDifficulty, RewardMoneyMultiplier, RewardBonusMoney, RewardSpell, RewardHonor, RewardKillHonor, StartItem, "
+        //17                         18                          19                        20     21       22
         "RewardArtifactXPDifficulty, RewardArtifactXPMultiplier, RewardArtifactCategoryID, Flags, FlagsEx, FlagsEx2, "
-        //24          25             26         27                 28           29             30         31
+        //23          24             25         26                 27           28             29         30
         "RewardItem1, RewardAmount1, ItemDrop1, ItemDropQuantity1, RewardItem2, RewardAmount2, ItemDrop2, ItemDropQuantity2, "
-        //32          33             34         35                 36           37             38         39
+        //31          32             33         34                 35           36             37         38
         "RewardItem3, RewardAmount3, ItemDrop3, ItemDropQuantity3, RewardItem4, RewardAmount4, ItemDrop4, ItemDropQuantity4, "
-        //40                  41                         42                          43                   44                         45
+        //39                  40                         41                          42                   43                         44
         "RewardChoiceItemID1, RewardChoiceItemQuantity1, RewardChoiceItemDisplayID1, RewardChoiceItemID2, RewardChoiceItemQuantity2, RewardChoiceItemDisplayID2, "
-        //46                  47                         48                          49                   50                         51
+        //45                  46                         47                          48                   49                         50
         "RewardChoiceItemID3, RewardChoiceItemQuantity3, RewardChoiceItemDisplayID3, RewardChoiceItemID4, RewardChoiceItemQuantity4, RewardChoiceItemDisplayID4, "
-        //52                  53                         54                          55                   56                         57
+        //51                  52                         53                          54                   55                         56
         "RewardChoiceItemID5, RewardChoiceItemQuantity5, RewardChoiceItemDisplayID5, RewardChoiceItemID6, RewardChoiceItemQuantity6, RewardChoiceItemDisplayID6, "
-        //58           59    60    61           62           63                 64                 65
+        //57           58    59    60           61           62                 63                 64
         "POIContinent, POIx, POIy, POIPriority, RewardTitle, RewardArenaPoints, RewardSkillLineID, RewardNumSkillUps, "
-        //66            67                  68                         69
+        //65            66                  67                         68
         "PortraitGiver, PortraitGiverMount, PortraitGiverModelSceneID, PortraitTurnIn, "
-        //70               71                   72                      73                   74                75                   76                      77
+        //69               70                   71                      72                   73                74                   75                      76
         "RewardFactionID1, RewardFactionValue1, RewardFactionOverride1, RewardFactionCapIn1, RewardFactionID2, RewardFactionValue2, RewardFactionOverride2, RewardFactionCapIn2, "
-        //78               79                   80                      81                   82                83                   84                      85
+        //77               78                   79                      80                   81                82                   83                      84
         "RewardFactionID3, RewardFactionValue3, RewardFactionOverride3, RewardFactionCapIn3, RewardFactionID4, RewardFactionValue4, RewardFactionOverride4, RewardFactionCapIn4, "
-        //86               87                   88                      89                   90
+        //85               86                   87                      88                   89
         "RewardFactionID5, RewardFactionValue5, RewardFactionOverride5, RewardFactionCapIn5, RewardFactionFlags, "
-        //91                92                  93                 94                  95                 96                  97                 98
+        //90                91                  92                 93                  94                 95                  96                 97
         "RewardCurrencyID1, RewardCurrencyQty1, RewardCurrencyID2, RewardCurrencyQty2, RewardCurrencyID3, RewardCurrencyQty3, RewardCurrencyID4, RewardCurrencyQty4, "
-        //99                 100                 101          102          103             104               105        106                  107
+        //98                 99                  100          101          102             103               104        105                  106
         "AcceptedSoundKitID, CompleteSoundKitID, AreaGroupID, TimeAllowed, AllowableRaces, TreasurePickerID, Expansion, ManagedWorldStateID, QuestSessionBonus, "
-        //108      109             110               111              112                113                114                 115                 116
-        "LogTitle, LogDescription, QuestDescription, AreaDescription, PortraitGiverText, PortraitGiverName, PortraitTurnInText, PortraitTurnInName, QuestCompletionLog"
-        " FROM quest_template");
+        //107      108             109               110              111                112                113                 114                 115
+        "LogTitle, LogDescription, QuestDescription, AreaDescription, PortraitGiverText, PortraitGiverName, PortraitTurnInText, PortraitTurnInName, QuestCompletionLog "
+        "FROM quest_template");
     if (!result)
     {
         TC_LOG_INFO("server.loading", ">> Loaded 0 quests definitions. DB table `quest_template` is empty.");
@@ -6409,28 +6409,21 @@ void ObjectMgr::ReturnOrDeleteOldMails(bool serverUp)
     do
     {
         Field* fields = result->Fetch();
+        ObjectGuid::LowType receiver = fields[3].GetUInt64();
+        if (serverUp && ObjectAccessor::FindConnectedPlayer(ObjectGuid::Create<HighGuid::Player>(receiver)))
+            continue;
+
         Mail* m = new Mail;
         m->messageID      = fields[0].GetUInt32();
         m->messageType    = fields[1].GetUInt8();
         m->sender         = fields[2].GetUInt64();
-        m->receiver       = fields[3].GetUInt64();
+        m->receiver       = receiver;
         bool has_items    = fields[4].GetBool();
         m->expire_time    = fields[5].GetInt64();
         m->deliver_time   = 0;
         m->COD            = fields[6].GetUInt64();
         m->checked        = fields[7].GetUInt8();
         m->mailTemplateId = fields[8].GetInt16();
-
-        Player* player = nullptr;
-        if (serverUp)
-            player = ObjectAccessor::FindConnectedPlayer(ObjectGuid::Create<HighGuid::Player>(m->receiver));
-
-        if (player && player->m_mailsLoaded)
-        {                                                   // this code will run very improbably (the time is between 4 and 5 am, in game is online a player, who has old mail
-            // his in mailbox and he has already listed his mails)
-            delete m;
-            continue;
-        }
 
         // Delete or return mail
         if (has_items)
@@ -7810,8 +7803,8 @@ void ObjectMgr::LoadGameObjectTemplateAddons()
 {
     uint32 oldMSTime = getMSTime();
 
-    //                                               0      1        2      3        4        5              6
-    QueryResult result = WorldDatabase.Query("SELECT entry, faction, flags, mingold, maxgold, WorldEffectID, AIAnimKitID FROM gameobject_template_addon");
+    //                                               0       1       2      3        4        5        6        7        8        9        10             11
+    QueryResult result = WorldDatabase.Query("SELECT entry, faction, flags, mingold, maxgold, artkit0, artkit1, artkit2, artkit3, artkit4, WorldEffectID, AIAnimKitID FROM gameobject_template_addon");
 
     if (!result)
     {
@@ -7838,8 +7831,23 @@ void ObjectMgr::LoadGameObjectTemplateAddons()
         gameObjectAddon.Flags         = fields[2].GetUInt32();
         gameObjectAddon.Mingold       = fields[3].GetUInt32();
         gameObjectAddon.Maxgold       = fields[4].GetUInt32();
-        gameObjectAddon.WorldEffectID = fields[5].GetUInt32();
-        gameObjectAddon.AIAnimKitID   = fields[6].GetUInt32();
+        gameObjectAddon.WorldEffectID = fields[10].GetUInt32();
+        gameObjectAddon.AIAnimKitID   = fields[11].GetUInt32();
+
+        for (uint32 i = 0; i < gameObjectAddon.ArtKits.size(); ++i)
+        {
+            uint32 artKitID = fields[5 + i].GetUInt32();
+            if (!artKitID)
+                continue;
+
+            if (!sGameObjectArtKitStore.LookupEntry(artKitID))
+            {
+                TC_LOG_ERROR("sql.sql", "GameObject (Entry: %u) has invalid `artkit%d` (%d) defined, set to zero instead.", entry, i, artKitID);
+                continue;
+            }
+
+            gameObjectAddon.ArtKits[i] = artKitID;
+        }
 
         // checks
         if (gameObjectAddon.Faction && !sFactionTemplateStore.LookupEntry(gameObjectAddon.Faction))
@@ -10737,9 +10745,14 @@ void ObjectMgr::LoadCreatureQuestItems()
 
 void ObjectMgr::InitializeQueriesData(QueryDataGroup mask)
 {
+    uint32 oldMSTime = getMSTime();
+
     // cache disabled
     if (!sWorld->getBoolConfig(CONFIG_CACHE_DATA_QUERIES))
+    {
+        TC_LOG_INFO("server.loading", ">> Query data caching is disabled. Skipped initialization.");
         return;
+    }
 
     // Initialize Query data for creatures
     if (mask & QUERY_DATA_CREATURES)
@@ -10760,6 +10773,8 @@ void ObjectMgr::InitializeQueriesData(QueryDataGroup mask)
     if (mask & QUERY_DATA_POIS)
         for (auto& poiPair : _questPOIStore)
             poiPair.second.InitializeQueryData();
+
+    TC_LOG_INFO("server.loading", ">> Initialized query cache data in %u ms", GetMSTimeDiffToNow(oldMSTime));
 }
 
 void QuestPOIData::InitializeQueryData()
@@ -10907,9 +10922,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            responseItr->Reward = boost::in_place();
-
-            PlayerChoiceResponseReward* reward = responseItr->Reward.get_ptr();
+            PlayerChoiceResponseReward* reward = &responseItr->Reward.emplace();
             reward->TitleId          = fields[2].GetInt32();
             reward->PackageId        = fields[3].GetInt32();
             reward->SkillLineId      = fields[4].GetInt32();
@@ -11163,8 +11176,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            responseItr->MawPower.emplace();
-            PlayerChoiceResponseMawPower& mawPower = responseItr->MawPower.get();
+            PlayerChoiceResponseMawPower& mawPower = responseItr->MawPower.emplace();
             mawPower.TypeArtFileID = fields[2].GetInt32();
             mawPower.Rarity = fields[3].GetInt32();
             mawPower.RarityColor = fields[4].GetUInt32();
