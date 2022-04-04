@@ -30,6 +30,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "PoolMgr.h"
+#include "StringConvert.h"
 #include "World.h"
 #include "WorldStatePackets.h"
 
@@ -856,9 +857,9 @@ void GameEventMgr::LoadFromDB()
                 vItem.PlayerConditionId = fields[8].GetUInt32();
                 vItem.IgnoreFiltering   = fields[9].GetBool();
 
-                Tokenizer bonusListIDsTok(fields[7].GetString(), ' ');
-                for (char const* token : bonusListIDsTok)
-                    vItem.BonusListIDs.push_back(int32(atol(token)));
+                for (std::string_view token : Trinity::Tokenize(fields[7].GetStringView(), ' ', false))
+                    if (Optional<int32> bonusListID = Trinity::StringTo<int32>(token))
+                        vItem.BonusListIDs.push_back(*bonusListID);
 
                 // check validity with event's npcflag
                 if (!sObjectMgr->IsVendorItemValid(entry, vItem, nullptr, nullptr, event_npc_flag))
@@ -1183,8 +1184,8 @@ void GameEventMgr::UpdateEventNPCFlags(uint16 event_id)
                     if (CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate())
                         npcflag |= creatureTemplate->npcflag;
 
-                    creature->SetNpcFlags(NPCFlags(npcflag & 0xFFFFFFFF));
-                    creature->SetNpcFlags2(NPCFlags2(npcflag >> 32));
+                    creature->ReplaceAllNpcFlags(NPCFlags(npcflag & 0xFFFFFFFF));
+                    creature->ReplaceAllNpcFlags2(NPCFlags2(npcflag >> 32));
                     // reset gossip options, since the flag change might have added / removed some
                     //cr->ResetGossipOptions();
                 }

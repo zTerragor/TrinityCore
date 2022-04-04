@@ -17,7 +17,6 @@
 
 #include "BattlegroundWS.h"
 #include "BattlegroundMgr.h"
-#include "DB2Stores.h"
 #include "GameObject.h"
 #include "Log.h"
 #include "Map.h"
@@ -229,8 +228,10 @@ void BattlegroundWS::StartingEventOpenDoors()
 
 void BattlegroundWS::AddPlayer(Player* player)
 {
+    bool const isInBattleground = IsPlayerInBattleground(player->GetGUID());
     Battleground::AddPlayer(player);
-    PlayerScores[player->GetGUID()] = new BattlegroundWGScore(player->GetGUID(), player->GetBGTeam());
+    if (!isInBattleground)
+        PlayerScores[player->GetGUID()] = new BattlegroundWGScore(player->GetGUID(), player->GetBGTeam());
 }
 
 void BattlegroundWS::RespawnFlag(uint32 Team, bool captured)

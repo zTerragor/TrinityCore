@@ -28,7 +28,6 @@
 #include "Formulas.h"
 #include "GameEventMgr.h"
 #include "GameTime.h"
-#include "GossipDef.h"
 #include "GridNotifiersImpl.h"
 #include "Group.h"
 #include "GroupMgr.h"
@@ -44,7 +43,6 @@
 #include "Player.h"
 #include "PoolMgr.h"
 #include "QueryPackets.h"
-#include "QuestDef.h"
 #include "ScriptedGossip.h"
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
@@ -56,6 +54,9 @@
 #include "WorldPacket.h"
 #include <G3D/g3dmath.h>
 #include <sstream>
+
+CreatureMovementData::CreatureMovementData() : Ground(CreatureGroundMovementType::Run), Flight(CreatureFlightMovementType::None), Swim(true), Rooted(false), Chase(CreatureChaseMovementType::Run),
+Random(CreatureRandomMovementType::Walk), InteractionPauseTimer(sWorld->getIntConfig(CONFIG_CREATURE_STOP_FOR_PLAYER)) { }
 
 std::string CreatureMovementData::ToString() const
 {
@@ -73,6 +74,7 @@ std::string CreatureMovementData::ToString() const
         << ", Random: " << RandomStates[AsUnderlyingType(Random)];
     if (Rooted)
         str << ", Rooted";
+    str << ", InteractionPauseTimer: " << InteractionPauseTimer;
 
     return str.str();
 }
@@ -303,11 +305,11 @@ bool ForcedDespawnDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 }
 
 Creature::Creature(bool isWorldObject): Unit(isWorldObject), MapObject(), m_groupLootTimer(0), m_PlayerDamageReq(0), _pickpocketLootRestore(0),
-    m_corpseRemoveTime(0), m_respawnTime(0), m_respawnDelay(300), m_corpseDelay(60), m_wanderDistance(0.0f), m_boundaryCheckTime(2500), m_combatPulseTime(0), m_combatPulseDelay(0), m_reactState(REACT_AGGRESSIVE),
+    m_corpseRemoveTime(0), m_respawnTime(0), m_respawnDelay(300), m_corpseDelay(60), m_ignoreCorpseDecayRatio(false), m_wanderDistance(0.0f), m_boundaryCheckTime(2500), m_combatPulseTime(0), m_combatPulseDelay(0), m_reactState(REACT_AGGRESSIVE),
     m_defaultMovementType(IDLE_MOTION_TYPE), m_spawnId(UI64LIT(0)), m_equipmentId(0), m_originalEquipmentId(0), m_AlreadyCallAssistance(false), m_AlreadySearchedAssistance(false), m_cannotReachTarget(false), m_cannotReachTimer(0),
     m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL), m_originalEntry(0), m_homePosition(), m_transportHomePosition(), m_creatureInfo(nullptr), m_creatureData(nullptr), _waypointPathId(0), _currentWaypointNodeInfo(0, 0),
     m_formation(nullptr), m_triggerJustAppeared(true), m_respawnCompatibilityMode(false), _lastDamagedTime(0),
-    _regenerateHealth(true), _regenerateHealthLock(false)
+    _regenerateHealth(true), _regenerateHealthLock(false), _isMissingCanSwimFlagOutOfCombat(false)
 {
     m_regenTimer = CREATURE_REGEN_INTERVAL;
 
@@ -425,7 +427,7 @@ void Creature::RemoveCorpse(bool setSpawnTime, bool destroyForNearbyPlayers)
             ai->CorpseRemoved(respawnDelay);
 
         if (destroyForNearbyPlayers)
-            DestroyForNearbyPlayers();
+            UpdateObjectVisibilityOnDestroy();
 
         // Should get removed later, just keep "compatibility" with scripts
         if (setSpawnTime)
@@ -457,6 +459,9 @@ void Creature::RemoveCorpse(bool setSpawnTime, bool destroyForNearbyPlayers)
     }
     else
     {
+        if (CreatureAI* ai = AI())
+            ai->CorpseRemoved(m_respawnDelay);
+
         // In case this is called directly and normal respawn timer not set
         // Since this timer will be longer than the already present time it
         // will be ignored if the correct place added a respawn timer
@@ -602,24 +607,24 @@ bool Creature::UpdateEntry(uint32 entry, CreatureData const* data /*= nullptr*/,
 
     uint64 npcFlags;
     uint32 unitFlags, unitFlags2, unitFlags3, dynamicFlags;
-    ObjectMgr::ChooseCreatureFlags(cInfo, npcFlags, unitFlags, unitFlags2, unitFlags3, dynamicFlags, data);
+    ObjectMgr::ChooseCreatureFlags(cInfo, &npcFlags, &unitFlags, &unitFlags2, &unitFlags3, &dynamicFlags, data);
 
     if (cInfo->flags_extra & CREATURE_FLAG_EXTRA_WORLDEVENT)
         npcFlags |= sGameEventMgr->GetNPCFlag(this);
 
-    SetNpcFlags(NPCFlags(npcFlags & 0xFFFFFFFF));
-    SetNpcFlags2(NPCFlags2(npcFlags >> 32));
+    ReplaceAllNpcFlags(NPCFlags(npcFlags & 0xFFFFFFFF));
+    ReplaceAllNpcFlags2(NPCFlags2(npcFlags >> 32));
 
     // if unit is in combat, keep this flag
     unitFlags &= ~UNIT_FLAG_IN_COMBAT;
     if (IsInCombat())
         unitFlags |= UNIT_FLAG_IN_COMBAT;
 
-    SetUnitFlags(UnitFlags(unitFlags));
-    SetUnitFlags2(UnitFlags2(unitFlags2));
-    SetUnitFlags3(UnitFlags3(unitFlags3));
+    ReplaceAllUnitFlags(UnitFlags(unitFlags));
+    ReplaceAllUnitFlags2(UnitFlags2(unitFlags2));
+    ReplaceAllUnitFlags3(UnitFlags3(unitFlags3));
 
-    SetDynamicFlags(dynamicFlags);
+    ReplaceAllDynamicFlags(dynamicFlags);
 
     SetUpdateFieldValue(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::StateAnimID), sDB2Manager.GetEmptyAnimStateID());
 
@@ -668,9 +673,9 @@ bool Creature::UpdateEntry(uint32 entry, CreatureData const* data /*= nullptr*/,
         }
     }
 
-    // trigger creature is always not selectable and can not be attacked
+    // trigger creature is always uninteractible and can not be attacked
     if (IsTrigger())
-        AddUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
+        SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
 
     InitializeReactState();
 
@@ -679,6 +684,8 @@ bool Creature::UpdateEntry(uint32 entry, CreatureData const* data /*= nullptr*/,
         ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_TAUNT, true);
         ApplySpellImmune(0, IMMUNITY_EFFECT, SPELL_EFFECT_ATTACK_ME, true);
     }
+
+    SetIsCombatDisallowed((cInfo->flags_extra & CREATURE_FLAG_EXTRA_CANNOT_ENTER_COMBAT) != 0);
 
     LoadTemplateRoot();
     InitializeMovementFlags();
@@ -1099,7 +1106,7 @@ bool Creature::Create(ObjectGuid::LowType guidlow, Map* map, uint32 entry, Posit
     }
 
     // Allow players to see those units while dead, do it here (mayby altered by addon auras)
-    if (cinfo->type_flags & CREATURE_TYPE_FLAG_GHOST_VISIBLE)
+    if (cinfo->type_flags & CREATURE_TYPE_FLAG_VISIBLE_TO_GHOSTS)
         m_serverSideVisibility.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_ALIVE | GHOST_VISIBILITY_GHOST);
 
     if (!CreateFromProto(guidlow, entry, data, vehId))
@@ -1350,7 +1357,7 @@ void Creature::SetLootRecipient(Unit* unit, bool withGroup)
     else
         m_lootRecipientGroup = ObjectGuid::Empty;
 
-    AddDynamicFlag(UNIT_DYNFLAG_TAPPED);
+    SetDynamicFlag(UNIT_DYNFLAG_TAPPED);
 }
 
 // return true if this creature is tapped by the player or by a member of his group.
@@ -1798,9 +1805,12 @@ bool Creature::LoadFromDB(ObjectGuid::LowType spawnId, Map* map, bool addToMap, 
                 return false;
             }
         }
+        else
+        {
+            // compatibility mode creatures will be respawned in ::Update()
+            m_deathState = DEAD;
+        }
 
-        // compatibility mode creatures will be respawned in ::Update()
-        m_deathState = DEAD;
         if (CanFly())
         {
             float tz = map->GetHeight(GetPhaseShift(), data->spawnPoint, true, MAX_FALL_DISTANCE);
@@ -2013,7 +2023,7 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
         if (!_IsTargetAcceptable(who))
             return false;
 
-        if (!force && (IsNeutralToAll() || !IsWithinDistInMap(who, GetAttackDistance(who) + m_CombatDistance)))
+        if (IsNeutralToAll() || !IsWithinDistInMap(who, GetAttackDistance(who) + m_CombatDistance))
             return false;
     }
 
@@ -2026,7 +2036,6 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
 
     return IsWithinLOSInMap(who);
 }
-
 
 bool Creature::CheckNoGrayAggroConfig(uint32 playerLevel, uint32 creatureLevel) const
 {
@@ -2098,6 +2107,7 @@ void Creature::setDeathState(DeathState s)
         uint32 respawnDelay = m_respawnDelay;
         if (uint32 scalingMode = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMICMODE))
             GetMap()->ApplyDynamicModeRespawnScaling(this, m_spawnId, respawnDelay, scalingMode);
+
         // @todo remove the boss respawn time hack in a dynspawn follow-up once we have creature groups in instances
         if (m_respawnCompatibilityMode)
         {
@@ -2120,8 +2130,8 @@ void Creature::setDeathState(DeathState s)
         DoNotReacquireSpellFocusTarget();  // cancel delayed re-target
         SetTarget(ObjectGuid::Empty);      // drop target - dead mobs shouldn't ever target things
 
-        SetNpcFlags(UNIT_NPC_FLAG_NONE);
-        SetNpcFlags2(UNIT_NPC_FLAG_2_NONE);
+        ReplaceAllNpcFlags(UNIT_NPC_FLAG_NONE);
+        ReplaceAllNpcFlags2(UNIT_NPC_FLAG_2_NONE);
 
         SetMountDisplayId(0); // if creature is mounted on a virtual mount, remove it at death
 
@@ -2133,8 +2143,9 @@ void Creature::setDeathState(DeathState s)
         if (m_formation && m_formation->GetLeader() == this)
             m_formation->FormationReset(true);
 
-        bool needsFalling = IsFlying() || IsHovering();
-        SetHover(false);
+        bool needsFalling = (IsFlying() || IsHovering()) && !IsUnderWater();
+        SetHover(false, false);
+        SetDisableGravity(false, false);
 
         if (needsFalling)
             GetMotionMaster()->MoveFall();
@@ -2163,18 +2174,18 @@ void Creature::setDeathState(DeathState s)
 
             uint64 npcFlags;
             uint32 unitFlags, unitFlags2, unitFlags3, dynamicFlags;
-            ObjectMgr::ChooseCreatureFlags(cInfo, npcFlags, unitFlags, unitFlags2, unitFlags3, dynamicFlags, creatureData);
+            ObjectMgr::ChooseCreatureFlags(cInfo, &npcFlags, &unitFlags, &unitFlags2, &unitFlags3, &dynamicFlags, creatureData);
 
             if (cInfo->flags_extra & CREATURE_FLAG_EXTRA_WORLDEVENT)
                 npcFlags |= sGameEventMgr->GetNPCFlag(this);
 
-            SetNpcFlags(NPCFlags(npcFlags & 0xFFFFFFFF));
-            SetNpcFlags2(NPCFlags2(npcFlags >> 32));
+            ReplaceAllNpcFlags(NPCFlags(npcFlags & 0xFFFFFFFF));
+            ReplaceAllNpcFlags2(NPCFlags2(npcFlags >> 32));
 
-            SetUnitFlags(UnitFlags(unitFlags));
-            SetUnitFlags2(UnitFlags2(unitFlags2));
-            SetUnitFlags3(UnitFlags3(unitFlags3));
-            SetDynamicFlags(dynamicFlags);
+            ReplaceAllUnitFlags(UnitFlags(unitFlags));
+            ReplaceAllUnitFlags2(UnitFlags2(unitFlags2));
+            ReplaceAllUnitFlags3(UnitFlags3(unitFlags3));
+            ReplaceAllDynamicFlags(dynamicFlags);
 
             RemoveUnitFlag(UNIT_FLAG_IN_COMBAT);
 
@@ -2199,7 +2210,7 @@ void Creature::Respawn(bool force)
 
     if (m_respawnCompatibilityMode)
     {
-        DestroyForNearbyPlayers();
+        UpdateObjectVisibilityOnDestroy();
         RemoveCorpse(false, false);
 
         if (getDeathState() == DEAD)
@@ -2264,7 +2275,7 @@ void Creature::ForcedDespawn(uint32 timeMSToDespawn, Seconds forceRespawnTimer)
         uint32 respawnDelay = GetRespawnDelay();
 
         // do it before killing creature
-        DestroyForNearbyPlayers();
+        UpdateObjectVisibilityOnDestroy();
 
         bool overrideRespawnTime = false;
         if (IsAlive())
@@ -2507,7 +2518,7 @@ bool Creature::CanAssistTo(Unit const* u, Unit const* enemy, bool checkfaction /
     if (IsCivilian())
         return false;
 
-    if (HasUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE)) || IsImmuneToNPC())
+    if (HasUnitFlag(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_UNINTERACTIBLE) || IsImmuneToNPC())
         return false;
 
     // skip fighting creature
@@ -2551,8 +2562,8 @@ bool Creature::_IsTargetAcceptable(Unit const* target) const
 
     if (target->HasUnitState(UNIT_STATE_DIED))
     {
-        // guards can detect fake death
-        if (IsGuard() && target->HasUnitFlag2(UNIT_FLAG2_FEIGN_DEATH))
+        // some creatures can detect fake death
+        if (CanIgnoreFeignDeath() && target->HasUnitFlag2(UNIT_FLAG2_FEIGN_DEATH))
             return true;
         else
             return false;
@@ -2667,8 +2678,8 @@ bool Creature::LoadCreaturesAddon()
         // 3 StandMiscFlags
 
         SetStandState(UnitStandStateType(cainfo->bytes1 & 0xFF));
-        SetVisFlags(UnitVisFlags((cainfo->bytes1 >> 16) & 0xFF));
-        SetAnimTier(UnitBytes1_Flags((cainfo->bytes1 >> 24) & 0xFF), false);
+        ReplaceAllVisFlags(UnitVisFlags((cainfo->bytes1 >> 16) & 0xFF));
+        SetAnimTier(AnimTier((cainfo->bytes1 >> 24) & 0xFF), false);
 
         //! Suspected correlation between UNIT_FIELD_BYTES_1, offset 3, value 0x2:
         //! If no inhabittype_fly (if no MovementFlag_DisableGravity or MovementFlag_CanFly flag found in sniffs)
@@ -2687,8 +2698,8 @@ bool Creature::LoadCreaturesAddon()
         // 3 ShapeshiftForm     Must be determined/set by shapeshift spell/aura
 
         SetSheath(SheathState(cainfo->bytes2 & 0xFF));
-        SetPvpFlags(UNIT_BYTE2_FLAG_NONE);
-        SetPetFlags(UNIT_PET_FLAG_NONE);
+        ReplaceAllPvpFlags(UNIT_BYTE2_FLAG_NONE);
+        ReplaceAllPetFlags(UNIT_PET_FLAG_NONE);
         SetShapeshiftForm(FORM_NONE);
     }
 
@@ -2825,7 +2836,7 @@ void Creature::UpdateMovementFlags()
     if (!isInAir)
         RemoveUnitMovementFlag(MOVEMENTFLAG_FALLING);
 
-    SetSwim(GetMovementTemplate().IsSwimAllowed() && IsInWater());
+    SetSwim(CanSwim() && IsInWater());
 }
 
 CreatureMovementData const& Creature::GetMovementTemplate() const
@@ -2836,18 +2847,49 @@ CreatureMovementData const& Creature::GetMovementTemplate() const
     return GetCreatureTemplate()->Movement;
 }
 
+bool Creature::CanSwim() const
+{
+    if (Unit::CanSwim())
+        return true;
+
+    if (IsPet())
+        return true;
+
+    return false;
+}
+
+bool Creature::CanEnterWater() const
+{
+    if (CanSwim())
+        return true;
+
+    return GetMovementTemplate().IsSwimAllowed();
+}
+
+void Creature::RefreshCanSwimFlag(bool recheck)
+{
+    if (!_isMissingCanSwimFlagOutOfCombat || recheck)
+        _isMissingCanSwimFlagOutOfCombat = !HasUnitFlag(UNIT_FLAG_CAN_SWIM);
+
+    // Check if the creature has UNIT_FLAG_CAN_SWIM and add it if it's missing
+    // Creatures must be able to chase a target in water if they can enter water
+    if (_isMissingCanSwimFlagOutOfCombat && CanEnterWater())
+        SetUnitFlag(UNIT_FLAG_CAN_SWIM);
+}
+
 void Creature::AllLootRemovedFromCorpse()
 {
     if (loot.loot_type != LOOT_SKINNING && !IsPet() && GetCreatureTemplate()->SkinLootId && hasLootRecipient())
         if (LootTemplates_Skinning.HaveLootFor(GetCreatureTemplate()->SkinLootId))
-            AddUnitFlag(UNIT_FLAG_SKINNABLE);
+            SetUnitFlag(UNIT_FLAG_SKINNABLE);
 
     time_t now = GameTime::GetGameTime();
     // Do not reset corpse remove time if corpse is already removed
     if (m_corpseRemoveTime <= now)
         return;
 
-    float decayRate = sWorld->getRate(RATE_CORPSE_DECAY_LOOTED);
+    // Scripts can choose to ignore RATE_CORPSE_DECAY_LOOTED by calling SetCorpseDelay(timer, true)
+    float decayRate = m_ignoreCorpseDecayRatio ? 1.f : sWorld->getRate(RATE_CORPSE_DECAY_LOOTED);
 
     // corpse skinnable, but without skinning flag, and then skinned, corpse will despawn next update
     if (loot.loot_type == LOOT_SKINNING)
@@ -2979,7 +3021,7 @@ uint32 Creature::GetScriptId() const
         if (uint32 scriptId = creatureData->scriptId)
             return scriptId;
 
-    return sObjectMgr->GetCreatureTemplate(GetEntry())->ScriptID;
+    return ASSERT_NOTNULL(sObjectMgr->GetCreatureTemplate(GetEntry()))->ScriptID;
 }
 
 VendorItemData const* Creature::GetVendorItems() const
@@ -3252,41 +3294,15 @@ void Creature::SetSpellFocus(Spell const* focusSpell, WorldObject const* target)
     _spellFocusInfo.Spell = focusSpell;
 
     bool const noTurnDuringCast = spellInfo->HasAttribute(SPELL_ATTR5_DONT_TURN_DURING_CAST);
+    bool const turnDisabled = HasUnitFlag2(UNIT_FLAG2_CANNOT_TURN);
     // set target, then force send update packet to players if it changed to provide appropriate facing
-    ObjectGuid newTarget = target ? target->GetGUID() : ObjectGuid::Empty;
+    ObjectGuid newTarget = (target && !noTurnDuringCast && !turnDisabled) ? target->GetGUID() : ObjectGuid::Empty;
     if (GetTarget() != newTarget)
-    {
         SetUpdateFieldValue(m_values.ModifyValue(&Unit::m_unitData).ModifyValue(&UF::UnitData::Target), newTarget);
 
-        if ( // here we determine if the (relatively expensive) forced update is worth it, or whether we can afford to wait until the scheduled update tick
-            ( // only require instant update for spells that actually have a visual
-                spellInfo->GetSpellVisual()
-            ) && (
-                !focusSpell->GetCastTime() || // if the spell is instant cast
-                noTurnDuringCast // client gets confused if we attempt to turn at the regularly scheduled update packet
-            )
-        )
-        {
-            std::vector<Player*> playersNearby;
-            GetPlayerListInGrid(playersNearby, GetVisibilityRange());
-            for (Player* player : playersNearby)
-            {
-                // only update players that are known to the client (have already been created)
-                if (player->HaveAtClient(this))
-                    SendUpdateToPlayer(player);
-            }
-        }
-    }
-
-    if (!HasUnitFlag2(UNIT_FLAG2_CANNOT_TURN))
-    {
-        // Face the target - we need to do this before the unit state is modified for no-turn spells
-        if (target)
-            SetFacingToObject(target, false);
-        else if (noTurnDuringCast)
-            if (Unit* victim = GetVictim())
-                SetFacingToObject(victim, false); // ensure orientation is correct at beginning of cast
-    }
+    // If we are not allowed to turn during cast but have a focus target, face the target
+    if (!turnDisabled && noTurnDuringCast && target)
+        SetFacingToObject(target, false);
 
     if (noTurnDuringCast)
         AddUnitState(UNIT_STATE_FOCUSING);
@@ -3423,7 +3439,7 @@ bool Creature::CanGiveExperience() const
     return !IsCritter()
         && !IsPet()
         && !IsTotem()
-        && !(GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NO_XP_AT_KILL);
+        && !(GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NO_XP);
 }
 
 bool Creature::IsEngaged() const
@@ -3437,8 +3453,10 @@ void Creature::AtEngage(Unit* target)
 {
     Unit::AtEngage(target);
 
-    if (!(GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_MOUNTED_COMBAT_ALLOWED))
+    if (!(GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_ALLOW_MOUNTED_COMBAT))
         Dismount();
+
+    RefreshCanSwimFlag();
 
     if (IsPet() || IsGuardian()) // update pets' speed for catchup OOC speed
     {
@@ -3449,7 +3467,19 @@ void Creature::AtEngage(Unit* target)
 
     MovementGeneratorType const movetype = GetMotionMaster()->GetCurrentMovementGeneratorType();
     if (movetype == WAYPOINT_MOTION_TYPE || movetype == POINT_MOTION_TYPE || (IsAIEnabled() && AI()->IsEscorted()))
+    {
         SetHomePosition(GetPosition());
+
+        // if its a vehicle, set the home positon of every creature passenger at engage
+        // so that they are in combat range if hostile
+        if (Vehicle* vehicle = GetVehicleKit())
+        {
+            for (auto seat = vehicle->Seats.begin(); seat != vehicle->Seats.end(); ++seat)
+                if (Unit* passenger = ObjectAccessor::GetUnit(*this, seat->second.Passenger.Guid))
+                    if (Creature* creature = passenger->ToCreature())
+                        creature->SetHomePosition(GetPosition());
+        }
+    }
 
     if (CreatureAI* ai = AI())
         ai->JustEngagedWith(target);
@@ -3463,7 +3493,7 @@ void Creature::AtDisengage()
 
     ClearUnitState(UNIT_STATE_ATTACK_PLAYER);
     if (IsAlive() && HasDynamicFlag(UNIT_DYNFLAG_TAPPED))
-        SetDynamicFlags(GetCreatureTemplate()->dynamicflags);
+        ReplaceAllDynamicFlags(GetCreatureTemplate()->dynamicflags);
 
     if (IsPet() || IsGuardian()) // update pets' speed for catchup OOC speed
     {
@@ -3487,4 +3517,13 @@ std::string Creature::GetDebugInfo() const
         << "AIName: " << GetAIName() << " ScriptName: " << GetScriptName()
         << " WaypointPath: " << GetWaypointPath() << " SpawnId: " << GetSpawnId();
     return sstr.str();
+}
+
+void Creature::ExitVehicle(Position const* /*exitPosition*/)
+{
+    Unit::ExitVehicle();
+
+    // if the creature exits a vehicle, set it's home position to the
+    // exited position so it won't run away (home) and evade if it's hostile
+    SetHomePosition(GetPosition());
 }

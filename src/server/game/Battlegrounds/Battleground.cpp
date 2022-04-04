@@ -30,6 +30,7 @@
 #include "Group.h"
 #include "Guild.h"
 #include "GuildMgr.h"
+#include "Language.h"
 #include "Log.h"
 #include "Map.h"
 #include "MiscPackets.h"
@@ -1045,10 +1046,12 @@ void Battleground::AddPlayer(Player* player)
     bp.Team = team;
     bp.ActiveSpec = player->GetPrimarySpecialization();
 
+    bool const isInBattleground = IsPlayerInBattleground(player->GetGUID());
     // Add to list/maps
     m_Players[player->GetGUID()] = bp;
 
-    UpdatePlayersCountByTeam(team, false);                  // +1 player
+    if (!isInBattleground)
+        UpdatePlayersCountByTeam(team, false);                  // +1 player
 
     WorldPackets::Battleground::BattlegroundPlayerJoined playerJoined;
     playerJoined.Guid = player->GetGUID();
@@ -1118,7 +1121,8 @@ void Battleground::AddPlayer(Player* player)
     }
 
     // reset all map criterias on map enter
-    player->ResetCriteria(CriteriaFailEvent::LeaveBattleground, GetMapId(), true);
+    if (!isInBattleground)
+        player->ResetCriteria(CriteriaFailEvent::LeaveBattleground, GetMapId(), true);
 
     // setup BG group membership
     PlayerAddedToBGCheckIfBGIsRunning(player);
@@ -1642,6 +1646,22 @@ bool Battleground::DelObject(uint32 type)
     return false;
 }
 
+bool Battleground::RemoveObjectFromWorld(uint32 type)
+{
+    if (!BgObjects[type])
+        return true;
+
+    if (GameObject* obj = GetBgMap()->GetGameObject(BgObjects[type]))
+    {
+        obj->RemoveFromWorld();
+        BgObjects[type].Clear();
+        return true;
+    }
+    TC_LOG_INFO("bg.battleground", "Battleground::RemoveObjectFromWorld: gameobject (type: %u, %s) not found for BG (map: %u, instance id: %u)!",
+        type, BgObjects[type].ToString().c_str(), GetMapId(), m_InstanceID);
+    return false;
+}
+
 bool Battleground::AddSpiritGuide(uint32 type, float x, float y, float z, float o, TeamId teamId /*= TEAM_NEUTRAL*/)
 {
     uint32 entry = (teamId == TEAM_ALLIANCE) ? BG_CREATURE_ENTRY_A_SPIRITGUIDE : BG_CREATURE_ENTRY_H_SPIRITGUIDE;
@@ -1792,7 +1812,7 @@ void Battleground::HandleKillPlayer(Player* victim, Player* killer)
     if (!isArena())
     {
         // To be able to remove insignia -- ONLY IN Battlegrounds
-        victim->AddUnitFlag(UNIT_FLAG_SKINNABLE);
+        victim->SetUnitFlag(UNIT_FLAG_SKINNABLE);
         RewardXPAtKill(killer, victim);
     }
 }

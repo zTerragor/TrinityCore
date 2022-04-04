@@ -17,6 +17,7 @@
 
 #include "WorldSession.h"
 #include "AccountMgr.h"
+#include "AchievementMgr.h"
 #include "AchievementPackets.h"
 #include "AreaTriggerPackets.h"
 #include "Battleground.h"
@@ -43,7 +44,6 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
-#include "Opcodes.h"
 #include "OutdoorPvP.h"
 #include "Player.h"
 #include "RestMgr.h"
@@ -53,7 +53,6 @@
 #include "WhoListStorage.h"
 #include "WhoPackets.h"
 #include "World.h"
-#include "WorldPacket.h"
 #include <cstdarg>
 #include <zlib.h>
 
@@ -279,7 +278,7 @@ void WorldSession::HandleLogoutRequestOpcode(WorldPackets::Character::LogoutRequ
         if (GetPlayer()->GetStandState() == UNIT_STAND_STATE_STAND)
             GetPlayer()->SetStandState(UNIT_STAND_STATE_SIT);
         GetPlayer()->SetRooted(true);
-        GetPlayer()->AddUnitFlag(UNIT_FLAG_STUNNED);
+        GetPlayer()->SetUnitFlag(UNIT_FLAG_STUNNED);
     }
 
     SetLogoutStartTime(GameTime::GetGameTime());
@@ -313,7 +312,7 @@ void WorldSession::HandleTogglePvP(WorldPackets::Misc::TogglePvP& /*packet*/)
 {
     if (!GetPlayer()->HasPlayerFlag(PLAYER_FLAGS_IN_PVP))
     {
-        GetPlayer()->AddPlayerFlag(PLAYER_FLAGS_IN_PVP);
+        GetPlayer()->SetPlayerFlag(PLAYER_FLAGS_IN_PVP);
         GetPlayer()->RemovePlayerFlag(PLAYER_FLAGS_PVP_TIMER);
         if (!GetPlayer()->IsPvP() || GetPlayer()->pvpInfo.EndTimer)
             GetPlayer()->UpdatePvP(true, true);
@@ -321,7 +320,7 @@ void WorldSession::HandleTogglePvP(WorldPackets::Misc::TogglePvP& /*packet*/)
     else if (!GetPlayer()->IsWarModeLocalActive())
     {
         GetPlayer()->RemovePlayerFlag(PLAYER_FLAGS_IN_PVP);
-        GetPlayer()->AddPlayerFlag(PLAYER_FLAGS_PVP_TIMER);
+        GetPlayer()->SetPlayerFlag(PLAYER_FLAGS_PVP_TIMER);
         if (!GetPlayer()->pvpInfo.IsHostile && GetPlayer()->IsPvP())
             GetPlayer()->pvpInfo.EndTimer = GameTime::GetGameTime();     // start toggle-off
     }
@@ -331,7 +330,7 @@ void WorldSession::HandleSetPvP(WorldPackets::Misc::SetPvP& packet)
 {
     if (packet.EnablePVP)
     {
-        GetPlayer()->AddPlayerFlag(PLAYER_FLAGS_IN_PVP);
+        GetPlayer()->SetPlayerFlag(PLAYER_FLAGS_IN_PVP);
         GetPlayer()->RemovePlayerFlag(PLAYER_FLAGS_PVP_TIMER);
         if (!GetPlayer()->IsPvP() || GetPlayer()->pvpInfo.EndTimer)
             GetPlayer()->UpdatePvP(true, true);
@@ -339,7 +338,7 @@ void WorldSession::HandleSetPvP(WorldPackets::Misc::SetPvP& packet)
     else if (!GetPlayer()->IsWarModeLocalActive())
     {
         GetPlayer()->RemovePlayerFlag(PLAYER_FLAGS_IN_PVP);
-        GetPlayer()->AddPlayerFlag(PLAYER_FLAGS_PVP_TIMER);
+        GetPlayer()->SetPlayerFlag(PLAYER_FLAGS_PVP_TIMER);
         if (!GetPlayer()->pvpInfo.IsHostile && GetPlayer()->IsPvP())
             GetPlayer()->pvpInfo.EndTimer = GameTime::GetGameTime();     // start toggle-off
     }
@@ -930,7 +929,7 @@ void WorldSession::HandleSetDungeonDifficultyOpcode(WorldPackets::Misc::SetDunge
                 if (!groupGuy)
                     continue;
 
-                if (!groupGuy->IsInMap(groupGuy))
+                if (!groupGuy->IsInWorld())
                     return;
 
                 if (groupGuy->GetMap()->IsNonRaidDungeon())
@@ -1009,7 +1008,7 @@ void WorldSession::HandleSetRaidDifficultyOpcode(WorldPackets::Misc::SetRaidDiff
                 if (!groupGuy)
                     continue;
 
-                if (!groupGuy->IsInMap(groupGuy))
+                if (!groupGuy->IsInWorld())
                     return;
 
                 if (groupGuy->GetMap()->IsRaid())
@@ -1042,7 +1041,7 @@ void WorldSession::HandleSetRaidDifficultyOpcode(WorldPackets::Misc::SetRaidDiff
 void WorldSession::HandleSetTaxiBenchmark(WorldPackets::Misc::SetTaxiBenchmarkMode& packet)
 {
     if (packet.Enable)
-        _player->AddPlayerFlag(PLAYER_FLAGS_TAXI_BENCHMARK);
+        _player->SetPlayerFlag(PLAYER_FLAGS_TAXI_BENCHMARK);
     else
         _player->RemovePlayerFlag(PLAYER_FLAGS_TAXI_BENCHMARK);
 }
@@ -1143,6 +1142,7 @@ void WorldSession::HandleMountSpecialAnimOpcode(WorldPackets::Misc::MountSpecial
     WorldPackets::Misc::SpecialMountAnim specialMountAnim;
     specialMountAnim.UnitGUID = _player->GetGUID();
     std::copy(mountSpecial.SpellVisualKitIDs.begin(), mountSpecial.SpellVisualKitIDs.end(), std::back_inserter(specialMountAnim.SpellVisualKitIDs));
+    specialMountAnim.SequenceVariation = mountSpecial.SequenceVariation;
     GetPlayer()->SendMessageToSet(specialMountAnim.Write(), false);
 }
 

@@ -72,12 +72,12 @@ void BattlegroundIC::PostUpdateImpl(uint32 diff)
     {
         if (closeFortressDoorsTimer <= diff)
         {
-            GetBGObject(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR01)->RemoveFromWorld();
-            GetBGObject(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR01)->RemoveFromWorld();
-            GetBGObject(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR02)->RemoveFromWorld();
-            GetBGObject(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR02)->RemoveFromWorld();
-            GetBGObject(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR03)->RemoveFromWorld();
-            GetBGObject(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR03)->RemoveFromWorld();
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR01);
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR01);
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR02);
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR02);
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_HUMAN_GATE_CLOSEDFX_DOOR03);
+            RemoveObjectFromWorld(BG_IC_GO_DOODAD_ND_WINTERORC_WALL_GATEFX_DOOR03);
 
             GetBGObject(BG_IC_GO_ALLIANCE_GATE_1)->SetDestructibleState(GO_DESTRUCTIBLE_DAMAGED);
             GetBGObject(BG_IC_GO_HORDE_GATE_1)->SetDestructibleState(GO_DESTRUCTIBLE_DAMAGED);
@@ -137,9 +137,9 @@ void BattlegroundIC::PostUpdateImpl(uint32 diff)
                     {
                         if (siege->IsAlive())
                         {
-                            if (siege->HasUnitFlag(UnitFlags(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_CANT_SWIM | UNIT_FLAG_IMMUNE_TO_PC)))
+                            if (siege->HasUnitFlag(UNIT_FLAG_UNINTERACTIBLE | UNIT_FLAG_CANT_SWIM | UNIT_FLAG_IMMUNE_TO_PC))
                                 // following sniffs the vehicle always has UNIT_FLAG_CANNOT_SWIM
-                                siege->RemoveUnitFlag(UnitFlags(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC));
+                                siege->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE | UNIT_FLAG_IMMUNE_TO_PC);
                             else
                                 siege->SetHealth(siege->GetMaxHealth());
                         }
@@ -242,8 +242,10 @@ void BattlegroundIC::StartingEventOpenDoors()
 
 void BattlegroundIC::AddPlayer(Player* player)
 {
+    bool const isInBattleground = IsPlayerInBattleground(player->GetGUID());
     Battleground::AddPlayer(player);
-    PlayerScores[player->GetGUID()] = new BattlegroundICScore(player->GetGUID(), player->GetBGTeam());
+    if (!isInBattleground)
+        PlayerScores[player->GetGUID()] = new BattlegroundICScore(player->GetGUID(), player->GetBGTeam());
 
     if (nodePoint[NODE_TYPE_QUARRY].nodeState == (player->GetTeamId() == TEAM_ALLIANCE ? NODE_STATE_CONTROLLED_A : NODE_STATE_CONTROLLED_H))
         player->CastSpell(player, SPELL_QUARRY, true);
@@ -575,7 +577,7 @@ void BattlegroundIC::HandleContestedNodes(ICNodePoint* node)
         for (Creature* cannon : cannons)
         {
             cannon->GetVehicleKit()->RemoveAllPassengers();
-            cannon->AddUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
+            cannon->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
         }
     }
     else if (node->nodeType == NODE_TYPE_WORKSHOP)
@@ -607,7 +609,7 @@ void BattlegroundIC::HandleCapturedNodes(ICNodePoint* node, bool recapture)
                     gunshipHorde->GetCreatureListWithEntryInGrid(cannons, NPC_HORDE_GUNSHIP_CANNON, 150.0f);
 
                 for (Creature* cannon : cannons)
-                    cannon->RemoveUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
+                    cannon->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
 
                 for (uint8 u = 0; u < MAX_HANGAR_TELEPORTERS_SPAWNS; ++u)
                 {
@@ -762,7 +764,7 @@ void BattlegroundIC::HandleCapturedNodes(ICNodePoint* node, bool recapture)
 
                         if (Creature* siegeEngine = GetBGCreature(siegeType))
                         {
-                            siegeEngine->AddUnitFlag(UnitFlags(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_CANT_SWIM));
+                            siegeEngine->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE | UNIT_FLAG_CANT_SWIM);
                             siegeEngine->SetImmuneToPC(true);
                             siegeEngine->SetFaction(BG_IC_Factions[(node->faction == TEAM_ALLIANCE ? 0 : 1)]);
                         }

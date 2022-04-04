@@ -476,12 +476,15 @@ void BattlegroundSA::FillInitialWorldStates(WorldPackets::WorldState::InitWorldS
 
 void BattlegroundSA::AddPlayer(Player* player)
 {
+    bool const isInBattleground = IsPlayerInBattleground(player->GetGUID());
     Battleground::AddPlayer(player);
-    PlayerScores[player->GetGUID()] = new BattlegroundSAScore(player->GetGUID(), player->GetBGTeam());
+    if (!isInBattleground)
+        PlayerScores[player->GetGUID()] = new BattlegroundSAScore(player->GetGUID(), player->GetBGTeam());
 
     SendTransportInit(player);
 
-    TeleportToEntrancePosition(player);
+    if (!isInBattleground)
+        TeleportToEntrancePosition(player);
 }
 
 void BattlegroundSA::RemovePlayer(Player* /*player*/, ObjectGuid /*guid*/, uint32 /*team*/) { }
@@ -673,9 +676,9 @@ void BattlegroundSA::DemolisherStartState(bool start)
         if (Creature* dem = GetBGCreature(i))
         {
             if (start)
-                dem->AddUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
+                dem->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_UNINTERACTIBLE);
             else
-                dem->RemoveUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
+                dem->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_UNINTERACTIBLE);
         }
     }
 }
@@ -759,7 +762,7 @@ void BattlegroundSA::UpdateObjectInteractionFlags(uint32 objectId)
         if (CanInteractWithObject(objectId))
             go->RemoveFlag(GO_FLAG_NOT_SELECTABLE);
         else
-            go->AddFlag(GO_FLAG_NOT_SELECTABLE);
+            go->SetFlag(GO_FLAG_NOT_SELECTABLE);
     }
 }
 

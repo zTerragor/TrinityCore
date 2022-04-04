@@ -27,10 +27,8 @@
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
-#include "ScriptMgr.h"
 #include "Transport.h"
 #include "WaypointManager.h"
-#include "World.h"
 
 /// Put scripts in the execution queue
 void Map::ScriptsStart(std::map<uint32, std::multimap<uint32, ScriptInfo>> const& scripts, uint32 id, Object* source, Object* target)
@@ -445,7 +443,7 @@ void Map::ScriptsProcess()
                     if (step.script->Emote.Flags & SF_EMOTE_USE_STATE)
                         cSource->SetEmoteState(Emote(step.script->Emote.EmoteID));
                     else
-                        cSource->HandleEmoteCommand(step.script->Emote.EmoteID);
+                        cSource->HandleEmoteCommand(static_cast<Emote>(step.script->Emote.EmoteID));
                 }
                 break;
 
