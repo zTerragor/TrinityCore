@@ -4770,16 +4770,6 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->AttributesEx2 |= SPELL_ATTR2_IGNORE_LINE_OF_SIGHT;
     });
 
-    // Waycrest Manor - Waycrests Defeated (Horde)
-    // Waycrest Manor - Waycrests Defeated (Alliance)
-    ApplySpellFix({ 267595, 267597, 267609 }, [](SpellInfo* spellInfo)
-    {
-        ApplySpellEffectFix(spellInfo, EFFECT_0, [](SpellEffectInfo* spellEffectInfo)
-        {
-            spellEffectInfo->Effect = SPELL_EFFECT_CREATE_CONVERSATION;
-        });
-    });
-
     // ENDOF WAYCREST MANOR SPELLS
 
     //
@@ -4846,7 +4836,7 @@ void SpellMgr::LoadSpellInfoCorrections()
             spellEffectInfo->TargetB = SpellImplicitTargetInfo(TARGET_DEST_DEST);
         });
     });
-    // END OF SEPULCHER OF THE FIRST ONES
+    // ENDOF SEPULCHER OF THE FIRST ONES
 
     //
     // THE AZURE VAULT SPELLS
@@ -4879,6 +4869,39 @@ void SpellMgr::LoadSpellInfoCorrections()
     // ENDOF THE AZURE VAULT SPELLS
     //
 
+    //
+    // WAYCREST MANOR SPELLS
+    //
+
+    ApplySpellFix({
+        260566, // Wildfire Missile
+        260570  // Wildfire Missile Impact
+    }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->AttributesEx2 |= SPELL_ATTR2_IGNORE_LINE_OF_SIGHT;
+        spellInfo->AttributesEx9 |= SPELL_ATTR9_FORCE_DEST_LOCATION;
+    });
+
+    // ENDOF WAYCREST MANOR SPELLS
+    //
+
+    //
+    // ATAL DAZAR SPELLS
+    //
+
+    // Reverse Cast Ride Vehicle
+    ApplySpellFix({ 258344 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->AttributesEx8 &= ~SPELL_ATTR8_ONLY_TARGET_IF_SAME_CREATOR;
+    });
+
+    // ENDOF ATAL DAZAR SPELLS
+    //
+
+    //
+    // THE WANDERING ISLE SPELLS
+    //
+
     // Summon Master Li Fei
     ApplySpellFix({ 102445 }, [](SpellInfo* spellInfo)
     {
@@ -4891,12 +4914,23 @@ void SpellMgr::LoadSpellInfoCorrections()
     // Summon Amberleaf Troublemaker
     ApplySpellFix({ 114698 }, [](SpellInfo* spellInfo)
     {
-        spellInfo->DurationEntry = sSpellDurationStore.LookupEntry(4); // 2mins
         ApplySpellEffectFix(spellInfo, EFFECT_0, [](SpellEffectInfo* spellEffectInfo)
         {
             spellEffectInfo->TargetA = SpellImplicitTargetInfo(TARGET_DEST_DEST);
         });
     });
+
+    // Summon Living Air
+    ApplySpellFix({ 102207 }, [](SpellInfo* spellInfo)
+    {
+        ApplySpellEffectFix(spellInfo, EFFECT_0, [](SpellEffectInfo* spellEffectInfo)
+        {
+            spellEffectInfo->TargetA = SpellImplicitTargetInfo(TARGET_DEST_TARGET_RANDOM);
+        });
+    });
+
+    // ENDOF THE WANDERING ISLE SPELLS
+    //
 
     // Earthquake
     ApplySpellFix({ 61882 }, [](SpellInfo* spellInfo)
